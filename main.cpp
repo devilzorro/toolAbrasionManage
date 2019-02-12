@@ -1,6 +1,3 @@
-#ifdef WIN32
-
-#else
 #include <iostream>
 #include <cstdlib>
 #include <string>
@@ -9,9 +6,14 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
-#include <mqtt/async_client.h>
 #include "json/json.h"
+
+#ifdef WIN32
+#include "mqtt/async_client.h"
 //#include "redisClient/redisClient.h"
+#else
+#include <mqtt/async_client.h>
+#include "redisClient/redisClient.h"
 #endif
 
 using namespace std;

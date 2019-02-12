@@ -3,10 +3,10 @@ project(toolAbrasionManage)
 
 ADD_DEFINITIONS(-DJSON_IS_AMALGAMATION)
 
+set(CMAKE_CXX_STANDARD 11)
+
 if (UNIX)
 unset(source_files)
-
-set(CMAKE_CXX_STANDARD 11)
 
 set(srcdirs
         src/json/
@@ -27,16 +27,40 @@ link_directories(
         libs/mqtt/
         .
 )
-add_executable(toolAbrasionManage ${source_files})
 message("on unix platfrom")
+add_executable(toolAbrasionManage ${source_files})
 target_link_libraries(toolAbrasionManage hiredis paho-mqttpp3 pthread)
 
-
 elseif(WIN32)
+    message("on windows platfrom")
+    unset(source_files)
 
+    set(srcdirs
+            src/json/
+            src/redisClient/
+            .)
+
+    include_directories(
+            includes/
+            src/
+    )
+
+    foreach(srcdir ${srcdirs})
+        aux_source_directory(${srcdir} source_files)
+    endforeach()
+
+    link_directories(
+            libs/hiredis-win/
+            libs/mqtt-win/
+            .
+    )
+    add_executable(toolAbrasionManage ${source_files})
+    target_link_libraries(toolAbrasionManage hiredis paho-mqttpp3)
 else()
     message("on a unsupport platfrom")
 endif ()
+
+
 
 
 
