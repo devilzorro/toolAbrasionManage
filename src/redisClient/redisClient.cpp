@@ -85,8 +85,9 @@ bool CRedisClient::Set(const std::string &key, const std::string &value)
 		FreeConnect();
 		return false;
 	}
-	
-	if ((m_reply->type != REDIS_REPLY_STATUS) || (strcasecmp(m_reply->str,"OK")))
+
+#ifdef WIN32
+	if ((m_reply->type != REDIS_REPLY_STATUS) || (_stricmp(m_reply->str,"OK")))
 	{
 		printf("redis set error, key = %s, value = %s\n", key.c_str(), value.c_str());
 		FreeReply();
@@ -98,7 +99,22 @@ bool CRedisClient::Set(const std::string &key, const std::string &value)
 		FreeReply();
 		return true;
 	}
+#else
+    if ((m_reply->type != REDIS_REPLY_STATUS) || (strcasecmp(m_reply->str,"OK")))
+	{
+		printf("redis set error, key = %s, value = %s\n", key.c_str(), value.c_str());
+		FreeReply();
+		return false;
+	}
+	else
+	{
+		printf("redis set success, key = %s, value = %s\n", key.c_str(), value.c_str());
+		FreeReply();
+		return true;
+	}
+#endif
 }
+
 
 bool CRedisClient::Get(const std::string &key, std::string &value)
 {
@@ -187,14 +203,24 @@ bool CRedisClient::CheckStatus()
 		FreeConnect();
 		return false;
 	}
-	
-    if (strcasecmp(m_reply->str,"PONG")) 
+#ifdef WIN32
+    if (_stricmp(m_reply->str,"PONG"))
+    {
+        printf("redis check status: reply not pong\n");
+        FreeReply();
+        FreeConnect();
+        return false;
+    }
+#else
+        if (strcasecmp(m_reply->str,"PONG"))
 	{
 		printf("redis check status: reply not pong\n");
 		FreeReply();
 		FreeConnect();
 		return false;
 	}
+#endif
+
 	else
 	{
 		printf("redis check status: connect ok\n");

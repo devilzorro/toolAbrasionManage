@@ -38,10 +38,12 @@ elseif(WIN32)
     set(srcdirs
             src/json/
             src/redisClient/
+            src/Win32_Interop/
             .)
 
     include_directories(
             includes/
+            includes/hiredis-win/
             src/
     )
 
