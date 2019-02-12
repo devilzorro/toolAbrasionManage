@@ -31,6 +31,7 @@ add_executable(toolAbrasionManage ${source_files})
 message("on unix platfrom")
 target_link_libraries(toolAbrasionManage hiredis paho-mqttpp3 pthread)
 
+
 elseif(WIN32)
 
 else()
