@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.9)
 project(toolAbrasionManage)
 
+ADD_DEFINITIONS(-DJSON_IS_AMALGAMATION)
+
+if (UNIX)
 unset(source_files)
 
 set(CMAKE_CXX_STANDARD 11)
@@ -15,8 +18,6 @@ include_directories(
         src/
 )
 
-ADD_DEFINITIONS(-DJSON_IS_AMALGAMATION)
-
 foreach(srcdir ${srcdirs})
     aux_source_directory(${srcdir} source_files)
 endforeach()
@@ -27,11 +28,12 @@ link_directories(
         .
 )
 add_executable(toolAbrasionManage ${source_files})
-if (UNIX)
-    message("on unix platfrom")
-    target_link_libraries(toolAbrasionManage hiredis paho-mqttpp3 pthread)
-    elseif(WIN32)
-    else()
+message("on unix platfrom")
+target_link_libraries(toolAbrasionManage hiredis paho-mqttpp3 pthread)
+
+elseif(WIN32)
+
+else()
     message("on a unsupport platfrom")
 endif ()
 
