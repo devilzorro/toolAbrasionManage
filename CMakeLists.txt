@@ -44,6 +44,7 @@ elseif(WIN32)
     include_directories(
             includes/
             includes/hiredis-win/
+            includes/mqtt-win/
             src/
     )
 
@@ -57,7 +58,7 @@ elseif(WIN32)
             .
     )
     add_executable(toolAbrasionManage ${source_files})
-    target_link_libraries(toolAbrasionManage hiredis paho-mqttpp3)
+    target_link_libraries(toolAbrasionManage hiredis paho-mqtt3a paho-mqttpp3)
 else()
     message("on a unsupport platfrom")
 endif ()
