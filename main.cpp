@@ -14,7 +14,7 @@
 #pragma comment(lib,"ws2_32.lib")
 #else
 #include <mqtt/async_client.h>
-#include "redisClient/redisClient.h"
+// #include "redisClient/redisClient.h"
 #endif
 
 using namespace std;
@@ -102,7 +102,7 @@ int main(int argc,char *argv[]) {
 //        return 1;
 //    }
 
-    CRedisClient redisClient;
+    // CRedisClient redisClient;
 
     //子线程初始化
 //    string strTest = "hello world!";
@@ -111,7 +111,7 @@ int main(int argc,char *argv[]) {
 
 
     //mqtt broker 连接
-    mqtt::async_client client("tcp://0.0.0.0:61613","test1");
+    mqtt::async_client client("tcp://localhost:1883","test1");
     mqtt::connect_options opts;
 //    mqtt::string_ref usrname
     opts.set_keep_alive_interval(20);
@@ -123,28 +123,28 @@ int main(int argc,char *argv[]) {
     cout<<"mqtt init finish********"<<endl;
 
 
-//    try {
-//        cout << "\nConnecting..." << endl;
-//        mqtt::token_ptr conntok = client.connect(opts);
-//        cout << "Waiting for the connection..." << endl;
-//        conntok->wait();
-//        client.start_consuming();
-//        client.subscribe("hello",1)->wait();
-//        cout<<"subscr topic hello ok!"<<endl;
-//
-//
-//        cout << "  ...OK" << endl;
-//
-//        cout<<"callback member conn status:"<<cb.bConnStatus<<endl;
-//
-//        mqtt::message_ptr msg = mqtt::make_message("hello","msg content1");
-//        msg->set_qos(0);
-//        client.publish(msg)->wait_for(10);
-//        cout<<"pub msg ok"<<endl;
-//    } catch (const mqtt::exception &exc) {
-//        cerr << exc.what() << endl;
-//        return 1;
-//    }
+   try {
+       cout << "\nConnecting..." << endl;
+       mqtt::token_ptr conntok = client.connect(opts);
+       cout << "Waiting for the connection..." << endl;
+       conntok->wait();
+       client.start_consuming();
+       client.subscribe("hello",1)->wait();
+       cout<<"subscr topic hello ok!"<<endl;
+
+
+       cout << "  ...OK" << endl;
+
+       cout<<"callback member conn status:"<<cb.bConnStatus<<endl;
+
+       mqtt::message_ptr msg = mqtt::make_message("hello","msg content1");
+       msg->set_qos(0);
+       client.publish(msg)->wait_for(10);
+       cout<<"pub msg ok"<<endl;
+   } catch (const mqtt::exception &exc) {
+       cerr << exc.what() << endl;
+       return 1;
+   }
 //
 //    cout<<"input q to quit"<<endl;
 ////    while (std::tolower(std::cin.get()) != 'x') {
@@ -152,15 +152,15 @@ int main(int argc,char *argv[]) {
 //
     while (std::tolower(std::cin.get()) != 'q');
 
-//    try {
-//        client.unsubscribe("hello")->wait();
-//        client.stop_consuming();
-//        client.disconnect()->wait();
-//        cout<<"discontent ok"<<endl;
-//    } catch (mqtt::exception &exc) {
-//        cerr << exc.what() << endl;
-//        return 1;
-//    }
+   try {
+       client.unsubscribe("hello")->wait();
+       client.stop_consuming();
+       client.disconnect()->wait();
+       cout<<"discontent ok"<<endl;
+   } catch (mqtt::exception &exc) {
+       cerr << exc.what() << endl;
+       return 1;
+   }
 
     return 0;
 }
