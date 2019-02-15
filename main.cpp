@@ -103,9 +103,7 @@ int main(int argc,char *argv[]) {
         return 1;
     }
 
-     CRedisClient redisClient;
-
-    redisClient.Connect("localhost",6379);
+    CRedisClient redisClient;
 
     //子线程初始化
     string strTest = "hello world!";
@@ -154,6 +152,8 @@ int main(int argc,char *argv[]) {
 ////    }
 //
     while (std::tolower(std::cin.get()) != 'q') {
+        bool redisStatus = redisClient.Connect("127.0.0.1",6379);
+        cout<<"redisConn status:"<<redisStatus<<endl;
         cout<<"redis connetct status:"<<redisClient.CheckStatus()<<endl;
     }
 

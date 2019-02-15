@@ -9,8 +9,6 @@
 #ifdef WIN32
 #define NO_QFORKIMPL
 #include "hiredis-win/hiredis.h"
-//#include "Win32_Interop/win32fixes.h"
-//#include ""
 #else
 #include "hiredis/hiredis.h"
 #endif
