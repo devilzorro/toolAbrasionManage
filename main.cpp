@@ -105,6 +105,8 @@ int main(int argc,char *argv[]) {
 
      CRedisClient redisClient;
 
+    redisClient.Connect("localhost",6379);
+
     //子线程初始化
     string strTest = "hello world!";
     thread tProcessMsg(processMsg,strTest);
@@ -151,7 +153,9 @@ int main(int argc,char *argv[]) {
 ////    while (std::tolower(std::cin.get()) != 'x') {
 ////    }
 //
-    while (std::tolower(std::cin.get()) != 'q');
+    while (std::tolower(std::cin.get()) != 'q') {
+        cout<<"redis connetct status:"<<redisClient.CheckStatus()<<endl;
+    }
 
    try {
        client.unsubscribe("hello")->wait();
@@ -162,6 +166,12 @@ int main(int argc,char *argv[]) {
        cerr << exc.what() << endl;
        return 1;
    }
+    try {
+        redisClient.Disconnect();
+    }catch (exception e) {
+        cerr << e.what()<<endl;
+    }
+
 
     return 0;
 }
