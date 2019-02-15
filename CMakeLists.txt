@@ -43,8 +43,8 @@ elseif(WIN32)
 
     include_directories(
             includes/
-            includes/hiredis-win/
-            includes/mqtt-win/
+            #includes/hiredis-win/
+            #includes/mqtt-win/
             src/
     )
 

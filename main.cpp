@@ -7,14 +7,15 @@
 #include <chrono>
 #include <atomic>
 #include "json/json.h"
+#include "redisClient/redisClient.h"
 
 #ifdef WIN32
 #include "mqtt-win/async_client.h"
-#include "redisClient/redisClient.h"
+#include <Windows.h>
 #pragma comment(lib,"ws2_32.lib")
 #else
 #include <mqtt/async_client.h>
-// #include "redisClient/redisClient.h"
+#include <dlfcn.h>
 #endif
 
 using namespace std;
@@ -92,22 +93,22 @@ void initConfigFile(string filePth) {
 }
 
 int main(int argc,char *argv[]) {
-//    string strJson = "{\"uploadid\": \"UP000000\",\"code\": 100,\"msg\": \"\",\"files\": \"\"}";
-//    Json::Reader reader;
-//    Json::Value root;
-//    if (reader.parse(strJson,root)) {
-//        string id = root["uploadid"].asString();
-//        cout<<"json reader:"<<id;
-//    } else {
-//        return 1;
-//    }
+    string strJson = "{\"uploadid\": \"UP000000\",\"code\": 100,\"msg\": \"\",\"files\": \"\"}";
+    Json::Reader reader;
+    Json::Value root;
+    if (reader.parse(strJson,root)) {
+        string id = root["uploadid"].asString();
+        cout<<"json reader:"<<id;
+    } else {
+        return 1;
+    }
 
-    // CRedisClient redisClient;
+     CRedisClient redisClient;
 
     //子线程初始化
-//    string strTest = "hello world!";
-//    thread tProcessMsg(processMsg,strTest);
-//    tProcessMsg.detach();
+    string strTest = "hello world!";
+    thread tProcessMsg(processMsg,strTest);
+    tProcessMsg.detach();
 
 
     //mqtt broker 连接
