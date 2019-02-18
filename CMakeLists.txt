@@ -39,6 +39,7 @@ elseif(WIN32)
             src/json/
             src/redisClient/
             src/Win32_Interop/
+            #src/win_stdafx/
             .)
 
     include_directories(
@@ -55,10 +56,12 @@ elseif(WIN32)
     link_directories(
             libs/hiredis-win/
             libs/mqtt-win/
+            libs/tooldll-win/
             .
     )
     add_executable(toolAbrasionManage ${source_files})
     target_link_libraries(toolAbrasionManage hiredis paho-mqtt3a paho-mqttpp3)
+
 else()
     message("on a unsupport platfrom")
 endif ()
