@@ -7,8 +7,10 @@
 #include <chrono>
 #include <atomic>
 #include <fstream>
+#include <sstream>
 #include "json/json.h"
 #include "redisClient/redisClient.h"
+#include <vector>
 
 #ifdef WIN32
 #include "mqtt-win/async_client.h"
@@ -20,7 +22,18 @@
 #include <dlfcn.h>
 #endif
 
+#define CONFIGPATH "toolConfig.json"
+
 using namespace std;
+
+string dllPath = "";
+string redisAddr = "127.0.0.1";
+int redisPort = 6379;
+string mqttAddr = "127.0.0.1";
+string strMqttPort = "1883";
+vector<string> vcRedisKeys;
+vector<string> vcRecvMsgs;
+
 
 struct Results {
     double *r;
@@ -72,8 +85,7 @@ public:
 };
 
 
-void processMsg(string passData) {
-    cout<<"pass data :"<<passData<<endl;
+void processMsg() {
     while (1)
     {
         cout<<"thread running"<<endl;
@@ -86,62 +98,173 @@ void processData() {
 
 }
 
-void initConfigFile(string filePth) {
+string getConfigContent(string filePth) {
+    ifstream configStream(filePth);
+    if (!configStream.is_open()) {
+        cout<<"error open config file"<<endl;
+        return "";
+    } else {
+        stringstream buffer;
+        buffer<<configStream.rdbuf();
+        string strConfig(buffer.str());
+        return strConfig;
+    }
+}
+
+void initLocalConfig() {
+
+}
+
+void initToolConfig() {
 
 }
 
 int main(int argc,char *argv[]) {
+    //本地redis连接
+    CRedisClient redisClient;
+    bool redisStatus = false;
+    int redisCount = 0;
+    while (!redisStatus) {
+//        this_thread::sleep_for(chrono::seconds(5));
+        redisStatus = redisClient.Connect(redisAddr,redisPort,10);
+        cout<<"redis connect status:"<<redisStatus<<endl;
+        redisCount++;
+        this_thread::sleep_for(chrono::seconds(1));
+        if (redisCount == 10) {
+            cout<<"tool local redis connect fail"<<endl;
+            redisStatus = true;
+//            return -1;
+        }
+    }
+
     pInitFun initFun;
     pFeedFun feedFun;
     pResultFun resultFun;
 #ifdef WIN32
-    HINSTANCE winDll = LoadLibrary(_T("tooldll.dll"));
-    if (winDll != NULL) {
-        initFun = (pInitFun)GetProcAddress(winDll,"initial");
-        feedFun = (pFeedFun)GetProcAddress(winDll,"feed");
-        resultFun = (pResultFun)GetProcAddress(winDll,"result");
+    if (dllPath != "") {
+        HINSTANCE winDll = LoadLibrary(_T("tooldll.dll"));
+        if (winDll != NULL) {
+            initFun = (pInitFun)GetProcAddress(winDll,"initial");
+            feedFun = (pFeedFun)GetProcAddress(winDll,"feed");
+            resultFun = (pResultFun)GetProcAddress(winDll,"result");
+        }
     }
 #else
 #endif
 
-    double *p;
-    double *r;
-    int n;
-    Results re;
-    double temp;
-    double toolnum;
-    double load;
+    //mqtt broker 连接
+    mqtt::async_client client(mqttAddr,strMqttPort);
+    mqtt::connect_options opts;
+    opts.set_keep_alive_interval(20);
+    opts.set_clean_session(true);
+    callback cb;
+    client.set_callback(cb);
+    cout<<"mqtt init finish********"<<endl;
 
-    ifstream f;
-    f.open("rawdata.txt");
 
-    p = initFun();
-    for (int i = 0; i < 4000; i++) {
-        for (int j = 0; j < 16; j++) {
-            f >> temp;
-            cout << "temp content:" << temp;
-            if (j == 2) {
-                toolnum = temp;
-            }
-            else if (j == 3)
-            {
-                load = temp;
-            }
-        }
-        cout << endl;
+   try {
+       cout << "\nConnecting..." << endl;
+       mqtt::token_ptr conntok = client.connect(opts);
+       cout << "Waiting for the connection..." << endl;
+       conntok->wait();
+       client.start_consuming();
+       client.subscribe("hello",1)->wait();
+       cout<<"subscr topic hello ok!"<<endl;
 
-        feedFun(toolnum,load,p);
-    }
-    f.close();
 
-    re = resultFun(p);
-    printf("******win tooldll run success*******\n");
-    r = re.r;
-    n = re.n;
-    for (int i = 0; i < n; ++i) {
-        cout<<"toolNUm:"<<r[i*2]<<endl;
-        cout<<"resultValue:"<<r[i*2+1]<<endl;
-    }
+       cout << "  ...OK" << endl;
+
+       cout<<"callback member conn status:"<<cb.bConnStatus<<endl;
+
+        //mqtt发送消息
+//       mqtt::message_ptr msg = mqtt::make_message("hello","msg content1");
+//       msg->set_qos(0);
+//       client.publish(msg)->wait_for(2);
+//       cout<<"pub msg ok"<<endl;
+   } catch (const mqtt::exception &exc) {
+       cerr << exc.what() << endl;
+       return 1;
+   }
+
+   int mqttCount = 0;
+   while(!cb.bConnStatus) {
+       this_thread::sleep_for(chrono::seconds(1));
+       mqttCount++;
+       if(mqttCount == 10) {
+           cout<<"mqtt connect fail"<<endl;
+       }
+   }
+
+//    bool redisStatus = false;
+//    int redisCount = 0;
+//    while (!redisStatus) {
+////        this_thread::sleep_for(chrono::seconds(5));
+//        redisStatus = redisClient.Connect(redisAddr,redisPort);
+//        cout<<"redis connect status:"<<redisStatus<<endl;
+//        redisCount++;
+//        this_thread::sleep_for(chrono::seconds(1));
+//        if (redisCount == 10) {
+//            cout<<"tool local redis connect fail"<<endl;
+//            redisStatus = true;
+////            return -1;
+//        }
+//    }
+
+
+//    double *p;
+//    double *r;
+//    int n;
+//    Results re;
+//    double temp;
+//    double toolnum;
+//    double load;
+//
+//    ifstream f;
+//    f.open("rawdata.txt");
+//
+//    int countNum = 0;
+//    int check = 0;
+//    double sum = 0;
+//    p = initFun();
+//    for (int i = 0; i < 4000; i++) {
+//        for (int j = 0; j < 16; j++) {
+//            f >> temp;
+////            cout << "temp content:" << temp;
+//            if (j == 2) {
+//                toolnum = temp;
+//                int tmpNum = temp;
+//                if(tmpNum == 168) {
+//                    countNum++;
+//                    cout<<"toolnum:"<<toolnum<<endl;
+//                }
+//            }
+//            else if (j == 3)
+//            {
+//                load = temp;
+//                if(check != countNum) {
+//                    check = countNum;
+//                    sum = sum + temp;
+//                }
+//
+//            }
+//        }
+////        cout << endl;
+//
+//        feedFun(toolnum,load,p);
+//    }
+//    f.close();
+//
+//    double res = sum/countNum;
+//    cout<<"******test result:"<<res<<endl;
+//
+//    re = resultFun(p);
+//    printf("******win tooldll run success*******\n");
+//    r = re.r;
+//    n = re.n;
+//    for (int i = 0; i < n; ++i) {
+//        cout<<"toolNUm:"<<r[i*2]<<endl;
+//        cout<<"resultValue:"<<r[i*2+1]<<endl;
+//    }
 
 //    string strJson = "{\"uploadid\": \"UP000000\",\"code\": 100,\"msg\": \"\",\"files\": \"\"}";
 //    Json::Reader reader;
@@ -153,7 +276,7 @@ int main(int argc,char *argv[]) {
 //        return 1;
 //    }
 
-//    CRedisClient redisClient;
+//
 
     //子线程初始化
 //    string strTest = "hello world!";
@@ -194,9 +317,13 @@ int main(int argc,char *argv[]) {
 //       return 1;
 //   }
 //
-//    cout<<"input q to quit"<<endl;
-////    while (std::tolower(std::cin.get()) != 'x') {
-////    }
+    cout<<"input x to test local redis connect"<<endl;
+    while (std::tolower(std::cin.get()) != 'x') {
+
+    }
+    bool bStatus = redisClient.Connect("127.0.0.1",6379);
+    cout<<"redisConn status:"<<bStatus<<endl;
+    cout<<"redis connetct status:"<<redisClient.CheckStatus()<<endl;
 //
     cout<<"input q to exit"<<endl;
     while (std::tolower(std::cin.get()) != 'q') {

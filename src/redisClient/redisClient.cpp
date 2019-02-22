@@ -1,7 +1,14 @@
 #include "redisClient.h"
 
+using namespace std;
+
 CRedisClient::CRedisClient()
 {
+#ifdef WIN32
+	WSADATA wsaData;
+	WSAStartup(MAKEWORD(2, 1), &wsaData);
+#else
+#endif
 	m_connect = NULL;
 	m_reply = NULL;
 }
@@ -25,18 +32,18 @@ bool CRedisClient::Connect(const std::string &host, int port)
 	
 	if (!m_connect)
 	{
-		printf("redis connect error: m_connect is null\n");
+		cout<<"redis connect error: m_connect is null"<<endl;
 		return false;
 	}
 	
 	if(m_connect->err)
 	{
-		printf("redis connect error: %s\n", m_connect->errstr);
+		cout<<"redis connect error: "<<m_connect->errstr<<endl;
 		FreeConnect();
 		return false;
 	}
 	
-	printf("redis connect success\n");
+	cout<<"redis connect success"<<endl;
 	return true;
 }
 
