@@ -22,17 +22,26 @@
 #include <dlfcn.h>
 #endif
 
-#define CONFIGPATH "toolConfig.json"
+#define TOOLCONFIG "toolLife.json"
+#define COMMCONFIG "test.ini"
+#define LOCALCONFIG "localConfig.json"
 
 using namespace std;
 
-string dllPath = "";
+string machineId = "";
+string toolThreshold = "";
+string studyStatus = "";
+string dllPath = "tooldll.dll";
 string redisAddr = "127.0.0.1";
 int redisPort = 6379;
 string mqttAddr = "127.0.0.1";
 string strMqttPort = "1883";
+
 vector<string> vcRedisKeys;
 vector<string> vcRecvMsgs;
+vector<string> vcSendMsgs;
+
+CRedisClient redisClient;
 
 
 struct Results {
@@ -43,6 +52,10 @@ struct Results {
 typedef double *(*pInitFun)();
 typedef int (*pFeedFun)(int toolNum, double load,double *p);
 typedef Results (*pResultFun)(double *p);
+
+pInitFun initFun;
+pFeedFun feedFun;
+pResultFun resultFun;
 
 class callback : public virtual mqtt::callback {
 public:
@@ -81,21 +94,93 @@ public:
         std::cout << "Message arrived :" << std::endl;
         std::cout << "\ttopic: '" << msg->get_topic() << "'" << std::endl;
         std::cout << "\tpayload: '" << msg->to_string() << "'\n" << std::endl;
+        vcRecvMsgs.push_back(msg->to_string());
     }
 };
 
 
 void processMsg() {
+    cout<<"processMsg thread running"<<endl;
     while (1)
     {
-        cout<<"thread running"<<endl;
-        this_thread::sleep_for(chrono::milliseconds(1000));
+        this_thread::sleep_for(chrono::milliseconds(100));
         //操作 ;
+        if (!vcRecvMsgs.empty()) {
+
+        }
     }
 }
 
-void processData() {
+void collectData() {
+    cout<<"collect data thread running"<<endl;
+//    while (1) {
+//        this_thread::sleep_for(chrono::milliseconds(10));
+//        //操作
+//
+//    }
 
+    double *p;
+    double *r;
+    int n;
+    Results re;
+    double temp;
+    double toolnum;
+    double load;
+
+    ifstream f;
+    f.open("rawdata.txt");
+
+    int countNum = 0;
+    int check = 0;
+    double sum = 0;
+    p = initFun();
+    for (int i = 0; i < 4000; i++) {
+        for (int j = 0; j < 16; j++) {
+            f >> temp;
+//            cout << "temp content:" << temp;
+            if (j == 2) {
+                toolnum = temp;
+                int tmpNum = temp;
+                if(tmpNum == 168) {
+                    countNum++;
+                    cout<<"toolnum:"<<toolnum<<endl;
+                }
+            }
+            else if (j == 3)
+            {
+                load = temp;
+                if(check != countNum) {
+                    check = countNum;
+                    sum = sum + temp;
+                }
+
+            }
+        }
+//        cout << endl;
+
+        feedFun(toolnum,load,p);
+    }
+    f.close();
+
+    double res = sum/countNum;
+    cout<<"******test result:"<<res<<endl;
+
+    re = resultFun(p);
+    printf("******win tooldll run success*******\n");
+    r = re.r;
+    n = re.n;
+    for (int i = 0; i < n; ++i) {
+        cout<<"toolNUm:"<<r[i*2]<<endl;
+        cout<<"resultValue:"<<r[i*2+1]<<endl;
+    }
+
+    cout<<"redis client:"<<redisClient.CheckStatus()<<endl;
+}
+
+void studyProcess() {
+    while (studyStatus == "start") {
+        this_thread::sleep_for(chrono::milliseconds(10));
+    }
 }
 
 string getConfigContent(string filePth) {
@@ -111,35 +196,30 @@ string getConfigContent(string filePth) {
     }
 }
 
-void initLocalConfig() {
+//读取本地阈值配置
+void initLocalConfig(string content) {
 
 }
 
-void initToolConfig() {
+//前端配置
+void initToolConfig(string content) {
 
+}
+
+//盒子公共配置，获取盒子machineId
+void initCommConfig(string content) {
+
+}
+
+//
+int writeLocalConfig(string path) {
+    return 0;
 }
 
 int main(int argc,char *argv[]) {
-    //本地redis连接
-    CRedisClient redisClient;
-    bool redisStatus = false;
-    int redisCount = 0;
-    while (!redisStatus) {
-//        this_thread::sleep_for(chrono::seconds(5));
-        redisStatus = redisClient.Connect(redisAddr,redisPort,10);
-        cout<<"redis connect status:"<<redisStatus<<endl;
-        redisCount++;
-        this_thread::sleep_for(chrono::seconds(1));
-        if (redisCount == 10) {
-            cout<<"tool local redis connect fail"<<endl;
-            redisStatus = true;
-//            return -1;
-        }
-    }
+    //初始化配置文件
 
-    pInitFun initFun;
-    pFeedFun feedFun;
-    pResultFun resultFun;
+    //初始化算法库
 #ifdef WIN32
     if (dllPath != "") {
         HINSTANCE winDll = LoadLibrary(_T("tooldll.dll"));
@@ -151,6 +231,22 @@ int main(int argc,char *argv[]) {
     }
 #else
 #endif
+
+    //本地redis连接
+    vcRecvMsgs.clear();
+    bool redisStatus = false;
+    int redisCount = 0;
+    while (!redisStatus) {
+        redisStatus = redisClient.Connect(redisAddr,redisPort);
+        cout<<"redis connect status:"<<redisStatus<<endl;
+        redisCount++;
+        this_thread::sleep_for(chrono::seconds(1));
+        if (redisCount == 10) {
+            cout<<"tool local redis connect fail"<<endl;
+            redisStatus = true;
+            return -1;
+        }
+    }
 
     //mqtt broker 连接
     mqtt::async_client client(mqttAddr,strMqttPort);
@@ -192,24 +288,31 @@ int main(int argc,char *argv[]) {
        mqttCount++;
        if(mqttCount == 10) {
            cout<<"mqtt connect fail"<<endl;
+           return 1;
        }
    }
 
-//    bool redisStatus = false;
-//    int redisCount = 0;
-//    while (!redisStatus) {
-////        this_thread::sleep_for(chrono::seconds(5));
-//        redisStatus = redisClient.Connect(redisAddr,redisPort);
-//        cout<<"redis connect status:"<<redisStatus<<endl;
-//        redisCount++;
-//        this_thread::sleep_for(chrono::seconds(1));
-//        if (redisCount == 10) {
-//            cout<<"tool local redis connect fail"<<endl;
-//            redisStatus = true;
-////            return -1;
-//        }
-//    }
+//    thread tProcessMsg(processMsg,strTest);
+//    tProcessMsg.detach();
+    thread thCollectData(collectData);
+   thCollectData.detach();
 
+   //处理消息 发送消息
+   while (1) {
+       this_thread::sleep_for(chrono::milliseconds(100));
+       //处理消息
+
+       //发送消息
+       if (cb.bConnStatus) {
+           if (!vcSendMsgs.empty()) {
+               //发送消息
+               mqtt::message_ptr msg = mqtt::make_message("hello","msg content1");
+               msg->set_qos(0);
+               client.publish(msg)->wait_for(2);
+               cout<<"pub msg ok"<<endl;
+           }
+       }
+   }
 
 //    double *p;
 //    double *r;
@@ -283,40 +386,6 @@ int main(int argc,char *argv[]) {
 //    thread tProcessMsg(processMsg,strTest);
 //    tProcessMsg.detach();
 
-
-    //mqtt broker 连接
-//    mqtt::async_client client("tcp://localhost:1883","test1");
-//    mqtt::connect_options opts;
-//    opts.set_keep_alive_interval(20);
-//    opts.set_clean_session(true);
-//    callback cb;
-//    client.set_callback(cb);
-//    cout<<"mqtt init finish********"<<endl;
-
-
-//   try {
-//       cout << "\nConnecting..." << endl;
-//       mqtt::token_ptr conntok = client.connect(opts);
-//       cout << "Waiting for the connection..." << endl;
-//       conntok->wait();
-//       client.start_consuming();
-//       client.subscribe("hello",1)->wait();
-//       cout<<"subscr topic hello ok!"<<endl;
-//
-//
-//       cout << "  ...OK" << endl;
-//
-//       cout<<"callback member conn status:"<<cb.bConnStatus<<endl;
-//
-//       mqtt::message_ptr msg = mqtt::make_message("hello","msg content1");
-//       msg->set_qos(0);
-//       client.publish(msg)->wait_for(10);
-//       cout<<"pub msg ok"<<endl;
-//   } catch (const mqtt::exception &exc) {
-//       cerr << exc.what() << endl;
-//       return 1;
-//   }
-//
     cout<<"input x to test local redis connect"<<endl;
     while (std::tolower(std::cin.get()) != 'x') {
 
