@@ -35,7 +35,11 @@ using namespace std;
 
 string machineId = "";
 string toolThreshold = "";
+//学习状态
 string studyStatus = "";
+//进入计算特征值状态
+string processStatus = "";
+
 string dllPath = "tooldll.dll";
 string redisAddr = "127.0.0.1";
 int redisPort = 6379;
@@ -196,11 +200,11 @@ void collectDataProcess() {
 //    cout<<"redis client:"<<redisClient.CheckStatus()<<endl;
 }
 
-void studyProcess() {
+void studyProcess(string mode) {
 
 }
 
-void alertToolProcess() {
+void alertToolProcess(string mode) {
 
 }
 
@@ -209,7 +213,7 @@ Results processToolVal(string flag) {
     double *tmpR;
     Results re;
     tmpPointer = initFun();
-    while (!((flag == "study")&&(studyStatus == "studyAbort"))) {
+    while ((!((flag == "study")&&(studyStatus == "studyAbort")))||(processStatus == "end")) {
         this_thread::sleep_for(chrono::milliseconds(10));
         //获取redis中存储的数据
         if (redisMap.count("toolNo")&&redisMap.count("axisLoad")) {
@@ -266,7 +270,32 @@ void initLocalConfig(string content) {
             Json::Value groupedTool = dataRoot["groupedTool"];
             if (groupedTool != NULL) {
                 for (int i = 0; i < groupedTool.size(); ++i) {
+                    Json::Value toolArray = groupedTool[i];
+                    double sameMaxVal;
+                    double sameMinVal;
+                    double sameMaxSensVal;
+                    double sameMinSensVal;
+                    for (int j = 0; j < toolArray.size(); ++j) {
+                        int iToolNo = toolArray[i].asInt();
+                        //刀组阈值上限设置
+                        if (maxLimMap.count(iToolNo)) {
+                            sameMaxVal = maxLimMap[iToolNo];
+                        } else {
+                            maxLimMap[iToolNo] = sameMaxVal;
+                        }
+                        //刀组阈值下限设置
+                        if (minLimMap.count(iToolNo)) {
+                            sameMinVal = minLimMap[iToolNo];
+                        } else {
+                            minLimMap[iToolNo] = sameMinVal;
+                        }
+                        //刀组灵敏度上限设置
+                        if (maxSensMap.count(iToolNo)) {
 
+                        } else {
+
+                        }
+                    }
                 }
             }
         }
@@ -287,14 +316,17 @@ void initToolConfig(string content) {
 }
 
 //盒子公共配置，获取盒子machineId
-void initCommConfig(string content) {
-
+void initCommConfig(string path) {
+    Config config;
+    if (config.FileExist(path)) {
+        config.ReadFile(path);
+        machineId = config.Read<string>("machineno","");
+        cout<<"***********::"<<machineId<<endl;
+    } else {
+        cout<<"ini config file not exist!"<<endl;
+    }
 }
 
-//
-int writeLocalConfig(string path) {
-    return 0;
-}
 
 void processMsg(string strContent) {
     Json::Reader reader;
@@ -407,6 +439,7 @@ int main(int argc,char *argv[]) {
 
 //   thread thCollectData(collectData);
 //   thCollectData.detach();
+
     for (int i = 0; i < 5; ++i) {
         string pushData;
         stringstream ss;
