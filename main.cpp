@@ -200,37 +200,61 @@ void collectDataProcess() {
 //    cout<<"redis client:"<<redisClient.CheckStatus()<<endl;
 }
 
-void studyProcess(string mode) {
-
-}
-
-void alertToolProcess(string mode) {
-
-}
-
 Results processToolVal(string flag) {
     double *tmpPointer;
     double *tmpR;
     Results re;
     tmpPointer = initFun();
-    while ((!((flag == "study")&&(studyStatus == "studyAbort")))||(processStatus == "end")) {
+    while (1) {
         this_thread::sleep_for(chrono::milliseconds(10));
-        //获取redis中存储的数据
-        if (redisMap.count("toolNo")&&redisMap.count("axisLoad")) {
-            stringstream ss;
-            int toolNo;
-            double tmpload;
-            ss<<redisMap["toolNo"];
-            ss>>toolNo;
-            ss<<redisMap["axisLoad"];
-            ss>>tmpload;
-            feedFun(toolNo,tmpload,tmpPointer);
+        if (redisMap.empty()) {
+            if (redisMap.count("startFlag")) {
+                if (redisMap["startFlag"] == "start") {
+                    if (flag == "study") {
+                        if (studyStatus == "abort") {
+                            break;
+                        }
+                    }
+                    //获取redis中存储的数据
+                    if (redisMap.count("toolNo")&&redisMap.count("axisLoad")) {
+                        stringstream ss;
+                        int toolNo;
+                        double tmpload;
+                        ss<<redisMap["toolNo"];
+                        ss>>toolNo;
+                        ss<<redisMap["axisLoad"];
+                        ss>>tmpload;
+                        feedFun(toolNo,tmpload,tmpPointer);
+                    }
+                }
+            }
         }
+
     }
     re = resultFun(tmpPointer);
     delete tmpPointer;
     tmpPointer = NULL;
     return re;
+}
+
+void studyProcess(string mode,string studyId) {
+    Results studyRe = processToolVal(mode);
+    if (studyStatus == "abort") {
+        cout<<"study process abort"<<endl;
+    } else {
+        //生成阈值报文回复
+
+    }
+}
+
+void alertToolProcess(string mode) {
+    while (1) {
+        Results recordVal = processToolVal(mode);
+        //进行预警处理，生成预警报文
+
+    }
+
+
 }
 
 string getConfigContent(string filePth) {
@@ -291,9 +315,15 @@ void initLocalConfig(string content) {
                         }
                         //刀组灵敏度上限设置
                         if (maxSensMap.count(iToolNo)) {
-
+                            sameMaxSensVal = maxSensMap[iToolNo];
                         } else {
-
+                            maxSensMap[iToolNo] = sameMaxSensVal;
+                        }
+                        //刀组灵敏度下限设置
+                        if (minSensMap.count(iToolNo)) {
+                            sameMinSensVal = minSensMap[iToolNo];
+                        } else {
+                            minSensMap[iToolNo] = sameMinSensVal;
                         }
                     }
                 }
@@ -365,6 +395,8 @@ void processMsg(string strContent) {
 
 int main(int argc,char *argv[]) {
     //初始化配置文件
+    thread thStudyProcess(studyProcess,"test");
+    thStudyProcess.detach();
 
     //初始化算法库
 #ifdef WIN32
