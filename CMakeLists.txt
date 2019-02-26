@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(toolAbrasionManage)
+project(toolLife)
 
 ADD_DEFINITIONS(-DJSON_IS_AMALGAMATION)
 
@@ -28,8 +28,8 @@ link_directories(
         .
 )
 message("on unix platfrom")
-add_executable(toolAbrasionManage ${source_files})
-target_link_libraries(toolAbrasionManage hiredis paho-mqttpp3 pthread)
+add_executable(toolLife ${source_files})
+target_link_libraries(toolLife hiredis paho-mqttpp3 pthread)
 
 elseif(WIN32)
     message("on windows platfrom")
@@ -39,6 +39,7 @@ elseif(WIN32)
             src/json/
             src/redisClient/
             src/Win32_Interop/
+            src/config/
             #src/win_stdafx/
             .)
 
@@ -59,8 +60,8 @@ elseif(WIN32)
             libs/tooldll-win/
             .
     )
-    add_executable(toolAbrasionManage ${source_files})
-    target_link_libraries(toolAbrasionManage hiredis paho-mqtt3a paho-mqttpp3)
+    add_executable(toolLife ${source_files})
+    target_link_libraries(toolLife hiredis paho-mqtt3a paho-mqttpp3)
 
 else()
     message("on a unsupport platfrom")
