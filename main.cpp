@@ -37,8 +37,13 @@ string machineId = "";
 string toolThreshold = "";
 //学习状态
 string studyStatus = "";
+//学习id
+string studyId = "";
 //进入计算特征值状态
 string processStatus = "";
+
+//程序名
+string programName = "";
 
 string dllPath = "tooldll.dll";
 string redisAddr = "127.0.0.1";
@@ -243,7 +248,50 @@ void studyProcess(string mode,string studyId) {
         cout<<"study process abort"<<endl;
     } else {
         //生成阈值报文回复
+        Json::Value root;
+        Json::Value contentRoot;
+        Json::Value dataRoot;
+        Json::Value studyResult;
 
+        double *r;
+        r = studyRe.r;
+        for (int i = 0; i < studyRe.n; ++i) {
+            int toolNo = r[i*2];
+            double val = r[i*2]+1;
+            Json::Value studyResultContent;
+            studyResultContent["toolNo"] = toolNo;
+            studyResultContent["value"] = val;
+            studyResult.append(studyResultContent);
+        }
+        delete r;
+        r = NULL;
+
+        dataRoot["fileName"] = programName;
+        dataRoot["studyId"] = studyId;
+        dataRoot["studyResult"] = studyResult;
+
+        contentRoot["dest"] = "toolLife";
+        contentRoot["order"] = 225;
+        contentRoot["switchs"] = "on";
+        contentRoot["frequency"] = 1;
+        contentRoot["source"] = "";
+        contentRoot["cmdId"] = "";
+        contentRoot["level"] = 7;
+        contentRoot["concurrent"] = "true";
+        contentRoot["data"] = dataRoot.toStyledString();
+
+        root["encode"] = false;
+        root["id"] = "";
+        root["machineNo"] = machineId;
+        root["type"] = 20;
+        root["order"] = 225;
+        root["dest"] = "toolLife";
+        root["content"] = contentRoot.toStyledString();
+
+        string strStudyResultMsg = root.toStyledString();
+        cout<<"test studyResult msg:"<<strStudyResultMsg<<endl;
+
+        vcSendMsgs.push_back(strStudyResultMsg);
     }
 }
 
@@ -251,7 +299,74 @@ void alertToolProcess(string mode) {
     while (1) {
         Results recordVal = processToolVal(mode);
         //进行预警处理，生成预警报文
+        Json::Value root;
+        Json::Value contentRoot;
+        Json::Value dataRoot;
+        Json::Value characteristicValueRoot;
+        Json::Value alarmDetailRoot;
+        bool bAlarm = false;
 
+        double *r;
+        r = recordVal.r;
+        for (int i = 0; i < recordVal.n; ++i) {
+            int toolNo = r[i*2];
+            double val = r[i*2] + 1;
+            Json::Value valContent;
+            valContent["toolNo"] = toolNo;
+            valContent["value"] = val;
+            characteristicValueRoot.append(valContent);
+
+            if ((!maxLimMap.empty())&&(maxLimMap.count(toolNo))) {
+                if (val > (maxLimMap[toolNo]*maxSensMap[toolNo])) {
+                    bAlarm = true;
+                    Json::Value alarmContent;
+                    alarmContent["toolNo"] = toolNo;
+                    alarmContent["detail"] = "超过上限";
+                    alarmDetailRoot.append(alarmContent);
+                }
+            }
+
+            if ((!minLimMap.empty())&&(minLimMap.count(toolNo))) {
+                if (val < (minLimMap[toolNo]*minSensMap[toolNo])) {
+                    bAlarm = true;
+                    Json::Value alarmContent;
+                    alarmContent["toolNo"] = toolNo;
+                    alarmContent["detail"] = "超过下限";
+                    alarmDetailRoot.append(alarmContent);
+                }
+            }
+        }
+
+        if (bAlarm) {
+            dataRoot["hasAlarm"] = 1;
+        } else {
+            dataRoot["hasAlarm"] = 0;
+        }
+        dataRoot["alarmDetail"] = alarmDetailRoot;
+        dataRoot["characteristicValue"] = characteristicValueRoot;
+        dataRoot["fileName"] = programName;
+        dataRoot["time"] = getCurrentTime();
+
+        contentRoot["data"] = dataRoot.toStyledString();
+        contentRoot["dest"] = "toolLife";
+        contentRoot["order"] = 226;
+        contentRoot["switchs"] = "on";
+        contentRoot["frequency"] = 1;
+        contentRoot["source"] = "";
+        contentRoot["cmdId"] = "";
+        contentRoot["level"] = 7;
+        contentRoot["concurrent"] = "true";
+
+        root["content"] = contentRoot.toStyledString();
+        root["encode"] = false;
+        root["id"] = "";
+        root["machineNo"] = machineId;
+        root["type"] = 20;
+        root["order"] = 226;
+        root["dest"] = "toolLife";
+
+        string strValDataMsg = root.toStyledString();
+        vcSendMsgs.push_back(strValDataMsg);
     }
 
 
@@ -272,6 +387,8 @@ string getConfigContent(string filePth) {
 
 //读取本地阈值配置
 void initLocalConfig(string content) {
+    maxLimMap.clear();
+
     if (content != "") {
         Json::Reader reader;
         Json::Value dataRoot;
@@ -285,12 +402,7 @@ void initLocalConfig(string content) {
                     maxSensMap[characteristicMax[i]["toolNo"].asInt()] = characteristicMax[i]["sens_ty"].asDouble();
                 }
             }
-            Json::Value noAlarmTool = dataRoot["noAlarmTool"];
-            if (noAlarmTool != NULL) {
-                for (int i = 0; i < noAlarmTool.size(); ++i) {
-                    vcNoAlarmTool.push_back(noAlarmTool[i].asInt());
-                }
-            }
+
             Json::Value groupedTool = dataRoot["groupedTool"];
             if (groupedTool != NULL) {
                 for (int i = 0; i < groupedTool.size(); ++i) {
@@ -327,6 +439,22 @@ void initLocalConfig(string content) {
                         }
                     }
                 }
+            }
+            //忽略预警刀号设置
+            Json::Value noAlarmTool = dataRoot["noAlarmTool"];
+            if (noAlarmTool != NULL) {
+                for (int i = 0; i < noAlarmTool.size(); ++i) {
+                    int noAlarmToolNo = noAlarmTool[i].asInt();
+                    vcNoAlarmTool.push_back(noAlarmToolNo);
+                    if (maxLimMap.count(noAlarmToolNo)) {
+                        maxLimMap.erase(noAlarmToolNo);
+                        maxSensMap.erase(noAlarmToolNo);
+                    }
+                    if (minLimMap.count(noAlarmToolNo)) {
+                        minLimMap.erase(noAlarmToolNo);
+                        minSensMap.erase(noAlarmToolNo);
+                    }
+                 }
             }
         }
     }
