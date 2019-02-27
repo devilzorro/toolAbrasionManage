@@ -34,7 +34,6 @@
 using namespace std;
 
 string machineId = "";
-string toolThreshold = "";
 //学习状态
 string studyStatus = "";
 //学习id
@@ -133,6 +132,7 @@ string getCurrentTime() {
 
 void collectDataProcess() {
     cout<<"collect data thread running"<<endl;
+    string tmpProgramName;
     while (1) {
         this_thread::sleep_for(chrono::milliseconds(10));
         //操作
@@ -145,6 +145,10 @@ void collectDataProcess() {
                 }
             }
         }
+
+//        if (tmpProgramName != programName) {
+//
+//        }
     }
 
 //    double *p;
@@ -388,6 +392,9 @@ string getConfigContent(string filePth) {
 //读取本地阈值配置
 void initLocalConfig(string content) {
     maxLimMap.clear();
+    maxSensMap.clear();
+    minLimMap.clear();
+    minSensMap.clear();
 
     if (content != "") {
         Json::Reader reader;
@@ -508,9 +515,41 @@ void processMsg(string strContent) {
         } else if (iOrder == 223) {
             //开始学习，终止学习报文
             if (dataRoot != NULL) {
-                string studyId = dataRoot["studyId"].asString();
+                studyId = dataRoot["studyId"].asString();
                 string studyLimit = dataRoot["studyLimit"].asString();
-                string action = dataRoot["action"].asString();
+                studyStatus = dataRoot["action"].asString();
+                if (studyStatus == "start") {
+                    //开始学习
+                    thread thStudyProcess(studyProcess,"study",studyId);
+                    thStudyProcess.detach();
+                }
+                //生成回复报文
+                Json::Value root;
+                Json::Value contentRoot;
+                Json::Value dataRoot;
+
+                dataRoot["time"] = getCurrentTime();
+                dataRoot["studyId"] = studyId;
+
+                contentRoot["dest"] = "toolLife";
+                contentRoot["order"] = 224;
+                contentRoot["switchs"] = "on";
+                contentRoot["frequency"] = 1;
+                contentRoot["source"] = "";
+                contentRoot["cmdId"] = "";
+                contentRoot["level"] = 7;
+                contentRoot["concurrent"] = "true";
+                contentRoot["data"] = dataRoot.toStyledString();
+
+                root["encode"] = false;
+                root["id"] = "";
+                root["machineNo"] = machineId;
+                root["type"] = 20;
+                root["order"] = 224;
+                root["dest"] = "toolLife";
+                root["content"] = contentRoot.toStyledString();
+
+                vcSendMsgs.push_back(root.toStyledString());
             }
         } else {
 
@@ -521,10 +560,44 @@ void processMsg(string strContent) {
 
 }
 
+//获取阈值报文
+string getValConfigMsg() {
+    Json::Value root;
+    Json::Value contentRoot;
+    Json::Value dataRoot;
+
+    dataRoot["time"] = getCurrentTime();
+
+    contentRoot["data"] = dataRoot.toStyledString();
+    contentRoot["dest"] = "toolLife";
+    contentRoot["order"] = 221;
+    contentRoot["switchs"] = "on";
+    contentRoot["frequency"] = 1;
+    contentRoot["source"] = "";
+    contentRoot["cmdId"] = "";
+    contentRoot["level"] = 7;
+    contentRoot["concurrent"] = "true";
+
+    root["content"] = contentRoot.toStyledString();
+    root["encode"] = false;
+    root["id"] = "";
+    root["machineNo"] = machineId;
+    root["type"] = 20;
+    root["order"] = 221;
+    root["dest"] = "toolLife";
+
+    return root.toStyledString();
+}
+
 int main(int argc,char *argv[]) {
     //初始化配置文件
-    thread thStudyProcess(studyProcess,"test");
-    thStudyProcess.detach();
+    //machineId配置
+    initCommConfig("common.properties");
+    //获取阈值配置文件信息
+    string tmpToolcontent = getConfigContent("toolLife.json");
+    if (tmpToolcontent != "") {
+        initLocalConfig(tmpToolcontent);
+    }
 
     //初始化算法库
 #ifdef WIN32
@@ -597,30 +670,12 @@ int main(int argc,char *argv[]) {
        }
    }
 
-//   thread thCollectData(collectData);
-//   thCollectData.detach();
+//启动redis数据采集线程
+    thread thCollectData(collectDataProcess);
+    thCollectData.detach();
 
-    for (int i = 0; i < 5; ++i) {
-        string pushData;
-        stringstream ss;
-        ss<<i;
-        ss>>pushData;
-        cout<<pushData<<endl;
-        vcRecvMsgs.push_back(pushData);
-    }
-
-    for (int j = 0; j < 7; ++j) {
-        if (!vcRecvMsgs.empty()) {
-            vector<string>::iterator it = vcRecvMsgs.begin();
-            string tmpStr = (*it);
-            cout<<tmpStr<<endl;
-            vcRecvMsgs.erase(it);
-        } else {
-            cout<<"vector is empty!"<<endl;
-        }
-    }
-
-//    vector<string>::iterator vcit
+    //生成获取阈值报文消息
+    vcSendMsgs.push_back(getValConfigMsg());
 
    //处理消息 发送消息
    while (1) {
@@ -649,20 +704,6 @@ int main(int argc,char *argv[]) {
        }
    }
 
-//    string strJson = "{\"uploadid\": \"UP000000\",\"code\": 100,\"msg\": \"\",\"files\": \"\"}";
-//    Json::Reader reader;
-//    Json::Value root;
-//    if (reader.parse(strJson,root)) {
-//        string id = root["uploadid"].asString();
-//        cout<<"json reader:"<<id;
-//    } else {
-//        return 1;
-//    }
-
-    //子线程初始化
-//    string strTest = "hello world!";
-//    thread tProcessMsg(processMsg,strTest);
-//    tProcessMsg.detach();
 
     cout<<"input x to test local redis connect"<<endl;
     while (std::tolower(std::cin.get()) != 'x') {
