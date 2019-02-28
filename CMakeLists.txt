@@ -8,9 +8,13 @@ set(CMAKE_CXX_STANDARD 11)
 if (UNIX)
 unset(source_files)
 
+SET(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall -fpermissive")
+
+
 set(srcdirs
         src/json/
         src/redisClient/
+        src/config/
         .)
 
 include_directories(
@@ -25,6 +29,7 @@ endforeach()
 link_directories(
         libs/hiredis/
         libs/mqtt/
+        libs/tooldll/
         .
 )
 message("on unix platfrom")
