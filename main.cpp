@@ -10,7 +10,7 @@
 #include <sstream>
 #include "json/json.h"
 #include "redisClient/redisClient.h"
-#include "config/config.h"
+//#include "config/config.h"
 #include <vector>
 #include <time.h>
 #include <map>
@@ -130,6 +130,70 @@ string getCurrentTime() {
 
 }
 
+void testToolDll() {
+    double *p;
+    double *r;
+    int n;
+    Results re;
+    double temp;
+    double toolnum;
+    double load;
+
+    ifstream f;
+    f.open("/home/llj/workspace/toolAbrasionManage/cmake-build-release/rawdata.txt");
+
+    int countNum = 0;
+    int check = 0;
+    double sum = 0;
+    cout<<"init fun"<<endl;
+    if (initFun != NULL) {
+        p = initFun();
+    } else {
+        cout<<"func pointer NULL"<<endl;
+    }
+
+    cout<<"init finish"<<endl;
+    for (int i = 0; i < 4000; i++) {
+        for (int j = 0; j < 16; j++) {
+            f >> temp;
+//            cout << "temp content:" << temp;
+            if (j == 2) {
+                toolnum = temp;
+                int tmpNum = temp;
+                if(tmpNum == 168) {
+                    countNum++;
+                    cout<<"toolnum:"<<toolnum<<endl;
+                }
+            }
+            else if (j == 3)
+            {
+                load = temp;
+                if(check != countNum) {
+                    check = countNum;
+                    sum = sum + temp;
+                }
+
+            }
+        }
+//        cout << endl;
+
+        feedFun(toolnum,load,p);
+    }
+    f.close();
+
+    double res = sum/countNum;
+    cout<<"******test result:"<<res<<endl;
+
+    re = resultFun(p);
+    printf("******win libtool run success*******\n");
+    r = re.r;
+    n = re.n;
+    for (int i = 0; i < n; ++i) {
+        cout<<"toolNUm:"<<r[i*2]<<endl;
+        cout<<"resultValue:"<<r[i*2+1]<<endl;
+    }
+}
+
 void collectDataProcess() {
     cout<<"collect data thread running"<<endl;
     string tmpProgramName;
@@ -151,60 +215,7 @@ void collectDataProcess() {
 //        }
     }
 
-//    double *p;
-//    double *r;
-//    int n;
-//    Results re;
-//    double temp;
-//    double toolnum;
-//    double load;
-//
-//    ifstream f;
-//    f.open("rawdata.txt");
-//
-//    int countNum = 0;
-//    int check = 0;
-//    double sum = 0;
-//    p = initFun();
-//    for (int i = 0; i < 4000; i++) {
-//        for (int j = 0; j < 16; j++) {
-//            f >> temp;
-////            cout << "temp content:" << temp;
-//            if (j == 2) {
-//                toolnum = temp;
-//                int tmpNum = temp;
-//                if(tmpNum == 168) {
-//                    countNum++;
-//                    cout<<"toolnum:"<<toolnum<<endl;
-//                }
-//            }
-//            else if (j == 3)
-//            {
-//                load = temp;
-//                if(check != countNum) {
-//                    check = countNum;
-//                    sum = sum + temp;
-//                }
-//
-//            }
-//        }
-////        cout << endl;
-//
-//        feedFun(toolnum,load,p);
-//    }
-//    f.close();
-//
-//    double res = sum/countNum;
-//    cout<<"******test result:"<<res<<endl;
-//
-//    re = resultFun(p);
-//    printf("******win tooldll run success*******\n");
-//    r = re.r;
-//    n = re.n;
-//    for (int i = 0; i < n; ++i) {
-//        cout<<"toolNUm:"<<r[i*2]<<endl;
-//        cout<<"resultValue:"<<r[i*2+1]<<endl;
-//    }
+
 //
 //    cout<<"redis client:"<<redisClient.CheckStatus()<<endl;
 }
@@ -482,14 +493,14 @@ void initToolConfig(string content) {
 
 //盒子公共配置，获取盒子machineId
 void initCommConfig(string path) {
-    Config config;
-    if (config.FileExist(path)) {
-        config.ReadFile(path);
-        machineId = config.Read<string>("machineno","");
-        cout<<"***********::"<<machineId<<endl;
-    } else {
-        cout<<"ini config file not exist!"<<endl;
-    }
+//    Config config;
+//    if (config.FileExist(path)) {
+//        config.ReadFile(path);
+//        machineId = config.Read<string>("machineno","");
+//        cout<<"***********::"<<machineId<<endl;
+//    } else {
+//        cout<<"ini config file not exist!"<<endl;
+//    }
 }
 
 
@@ -592,12 +603,12 @@ string getValConfigMsg() {
 int main(int argc,char *argv[]) {
     //初始化配置文件
     //machineId配置
-    initCommConfig("common.properties");
-    //获取阈值配置文件信息
-    string tmpToolcontent = getConfigContent("toolLife.json");
-    if (tmpToolcontent != "") {
-        initLocalConfig(tmpToolcontent);
-    }
+//    initCommConfig("common.properties");
+//    //获取阈值配置文件信息
+//    string tmpToolcontent = getConfigContent("toolLife.json");
+//    if (tmpToolcontent != "") {
+//        initLocalConfig(tmpToolcontent);
+//    }
 
     //初始化算法库
 #ifdef WIN32
@@ -610,8 +621,32 @@ int main(int argc,char *argv[]) {
         }
     }
 #else
+    void *plib = dlopen("/home/llj/workspace/toolAbrasionManage/cmake-build-release/libtool.so",RTLD_NOW | RTLD_GLOBAL);
+    if (!plib) {
+        cout<<"error msg:"<<dlerror()<<endl;
+    } else {
+        cout<<"p to fun"<<endl;
+        char *strError;
+        initFun = (pInitFun)dlsym(plib,"initial");
+        if ((strError = dlerror()) != NULL) {
+            cout<<"p to fun error:"<<strError<<endl;
+        }
+        feedFun = (pFeedFun)dlsym(plib,"feed");
+        if ((strError = dlerror()) != NULL) {
+            cout<<"p to fun error:"<<strError<<endl;
+        }
+        resultFun = (pResultFun)dlsym(plib,"result");
+        if ((strError = dlerror()) != NULL) {
+            cout<<"p to fun error:"<<strError<<endl;
+        }
+    }
+    int tmpStatus = dlclose(plib);
+    cout<<"dl close stastus:"<<tmpStatus<<endl;
+    cout<<"dlopen finish"<<endl;
 #endif
 
+
+    cout<<"test thread start"<<endl;
     //本地redis连接
     vcRecvMsgs.clear();
     redisMap.clear();
@@ -670,9 +705,13 @@ int main(int argc,char *argv[]) {
        }
    }
 
+   //linux动态库测试
+//    thread thTest(testToolDll);
+//    thTest.detach();
+
 //启动redis数据采集线程
-    thread thCollectData(collectDataProcess);
-    thCollectData.detach();
+//    thread thCollectData(collectDataProcess);
+//    thCollectData.detach();
 
     //生成获取阈值报文消息
     vcSendMsgs.push_back(getValConfigMsg());
@@ -709,9 +748,6 @@ int main(int argc,char *argv[]) {
     while (std::tolower(std::cin.get()) != 'x') {
 
     }
-    bool bStatus = redisClient.Connect("127.0.0.1",6379);
-    cout<<"redisConn status:"<<bStatus<<endl;
-    cout<<"redis connetct status:"<<redisClient.CheckStatus()<<endl;
 //
     cout<<"input q to exit"<<endl;
     while (std::tolower(std::cin.get()) != 'q') {
