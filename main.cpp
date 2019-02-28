@@ -133,71 +133,6 @@ string getCurrentTime() {
 
 }
 
-//void testsoTool() {
-//    double *p;
-//    double *r;
-//    int n;
-//    Results re;
-//    double temp;
-//    double toolnum;
-//    double load;
-//
-//    ifstream f;
-//    f.open("/home/llj/workspace/toolAbrasionManage/cmake-build-release/rawdata.txt");
-//
-//    int countNum = 0;
-//    int check = 0;
-//    double sum = 0;
-//    cout<<"init fun"<<endl;
-////    if (initFun != NULL) {
-////        p = initFun();
-////    } else {
-////        cout<<"func pointer NULL"<<endl;
-////    }
-//
-//    p = initial();
-//    cout<<"init finish"<<endl;
-//    for (int i = 0; i < 4000; i++) {
-//        for (int j = 0; j < 16; j++) {
-//            f >> temp;
-////            cout << "temp content:" << temp;
-//            if (j == 2) {
-//                toolnum = temp;
-//                int tmpNum = temp;
-//                if(tmpNum == 168) {
-//                    countNum++;
-//                    cout<<"toolnum:"<<toolnum<<endl;
-//                }
-//            }
-//            else if (j == 3)
-//            {
-//                load = temp;
-//                if(check != countNum) {
-//                    check = countNum;
-//                    sum = sum + temp;
-//                }
-//
-//            }
-//        }
-////        cout << endl;
-//
-//        feed(toolnum,load,p);
-//    }
-//    f.close();
-//
-//    double res = sum/countNum;
-//    cout<<"******test result:"<<res<<endl;
-//
-//    re = result(p);
-//    printf("******win libtool run success*******\n");
-//    r = re.r;
-//    n = re.n;
-//    for (int i = 0; i < n; ++i) {
-//        cout<<"toolNUm:"<<r[i*2]<<endl;
-//        cout<<"resultValue:"<<r[i*2+1]<<endl;
-//    }
-//}
-
 void testToolDll() {
     double *p;
     double *r;
@@ -697,15 +632,15 @@ int main(int argc,char *argv[]) {
     } else {
         cout<<"p to fun"<<endl;
         char *strError;
-        initFun = (pInitFun)dlsym(plib,"_Z7initialv");
+        initFun = (pInitFun)dlsym(plib,"initial");
         if ((strError = dlerror()) != NULL) {
             cout<<"p to fun error:"<<strError<<endl;
         }
-        feedFun = (pFeedFun)dlsym(plib,"_Z4feedidPd");
+        feedFun = (pFeedFun)dlsym(plib,"feed");
         if ((strError = dlerror()) != NULL) {
             cout<<"p to fun error:"<<strError<<endl;
         }
-        resultFun = (pResultFun)dlsym(plib,"_Z6resultPd");
+        resultFun = (pResultFun)dlsym(plib,"result");
         if ((strError = dlerror()) != NULL) {
             cout<<"p to fun error:"<<strError<<endl;
         }
@@ -721,18 +656,18 @@ int main(int argc,char *argv[]) {
     vcRecvMsgs.clear();
     redisMap.clear();
     bool redisStatus = false;
-//    int redisCount = 0;
-//    while (!redisStatus) {
-//        redisStatus = redisClient.Connect(redisAddr,redisPort);
-//        cout<<"redis connect status:"<<redisStatus<<endl;
-//        redisCount++;
-//        this_thread::sleep_for(chrono::seconds(1));
-//        if (redisCount == 10) {
-//            cout<<"tool local redis connect fail"<<endl;
-//            redisStatus = true;
-//            return -1;
-//        }
-//    }
+    int redisCount = 0;
+    while (!redisStatus) {
+        redisStatus = redisClient.Connect(redisAddr,redisPort);
+        cout<<"redis connect status:"<<redisStatus<<endl;
+        redisCount++;
+        this_thread::sleep_for(chrono::seconds(1));
+        if (redisCount == 10) {
+            cout<<"tool local redis connect fail"<<endl;
+            redisStatus = true;
+            return -1;
+        }
+    }
 
     //mqtt broker 连接
     mqtt::async_client client(mqttAddr,strMqttPort);
@@ -778,9 +713,6 @@ int main(int argc,char *argv[]) {
    //linux动态库测试
 //    thread thTest(testToolDll);
 //    thTest.detach();
-
-//    thread thsoTest(testsoTool);
-//   thsoTest.detach();
 
 //启动redis数据采集线程
 //    thread thCollectData(collectDataProcess);
