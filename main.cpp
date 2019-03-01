@@ -19,10 +19,12 @@
 #include "mqtt-win/async_client.h"
 #include <Windows.h>
 #include "win_stdafx/stdafx.h"
+#include <objbase.h>
 #pragma comment(lib,"ws2_32.lib")
 #else
 #include <mqtt/async_client.h>
 #include <dlfcn.h>
+#include <uuid.h>
 #endif
 
 struct Results {
@@ -133,6 +135,31 @@ string getCurrentTime() {
 
 }
 
+
+string GetGuid()
+{
+    char szuuid[128] = { 0 };
+#ifdef WIN32
+    GUID guid;
+    CoCreateGuid(&guid);
+    _snprintf_s(
+            szuuid,
+            sizeof(szuuid),
+            "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+            guid.Data1, guid.Data2, guid.Data3,
+            guid.Data4[0], guid.Data4[1],
+            guid.Data4[2], guid.Data4[3],
+            guid.Data4[4], guid.Data4[5],
+            guid.Data4[6], guid.Data4[7]);
+#else
+    uuid_t uuid;
+	uuid_generate(uuid);
+	uuid_unparse(uuid, szuuid);
+#endif
+
+    return string(szuuid);
+}
+
 void testToolDll() {
     double *p;
     double *r;
@@ -205,24 +232,35 @@ void collectDataProcess() {
     while (1) {
         this_thread::sleep_for(chrono::milliseconds(10));
         //操作
-        if (!vcRedisKeys.empty()) {
-            for (vector<string>::iterator it = vcRedisKeys.begin();it< vcRedisKeys.end();it++) {
-                string key = (*it);
-                string val;
-                if (redisClient.Get(key,val)) {
-                    redisMap[key] = val;
+        if (redisClient.CheckStatus()) {
+            string hKey = "lastMessage_" + machineId;
+            string str2010 = "";
+            string str2011 = "";
+            redisClient.HGet(hKey,"2010",str2010);
+            redisClient.HGet(hKey,"2011",str2011);
+
+            if (str2010 != "") {
+                Json::Reader reader10;
+                Json::Value root;
+
+                if (reader10.parse(str2010,root)) {
+                    redisMap["load"] = root["cnc_rdspmeter[0]"].asString();
+                }
+            }
+
+            if (str2011 != "") {
+                Json::Reader reader11;
+                Json::Value root;
+
+                if (reader11.parse(str2011,root)) {
+                    redisMap["toolNo"] = root["ext_toolno"].toStyledString();
+                    redisMap["currentProgram"] = root["cnc_exeprgname"].toStyledString();
+                    redisMap["programStartTime"] = root["programStartTime"].toStyledString();
+                    redisMap["programEndTime"] = root["programEndTime"].toStyledString();
                 }
             }
         }
-
-//        if (tmpProgramName != programName) {
-//
-//        }
     }
-
-
-//
-//    cout<<"redis client:"<<redisClient.CheckStatus()<<endl;
 }
 
 Results processToolVal(string flag) {
@@ -605,15 +643,50 @@ string getValConfigMsg() {
     return root.toStyledString();
 }
 
+void programNameAlarm(string currentName) {
+    if (currentName != "") {
+        if (currentName != programName) {
+            Json::Value root;
+            Json::Value contentRoot;
+            Json::Value dataRoot;
+
+            dataRoot["time"] = getCurrentTime();
+            dataRoot["errorId"] = "";
+            dataRoot["detail"] = "";
+
+            contentRoot["data"] = dataRoot.toStyledString();
+            contentRoot["dest"] = "toolLife";
+            contentRoot["order"] = 227;
+            contentRoot["switchs"] = "on";
+            contentRoot["frequency"] = 1;
+            contentRoot["source"] = "";
+            contentRoot["cmdId"] = "";
+            contentRoot["level"] = 7;
+            contentRoot["concurrent"] = "true";
+
+            root["content"] = contentRoot.toStyledString();
+            root["encode"] = false;
+            root["machineNo"] = machineId;
+            root["type"] = 20;
+            root["order"] = 227;
+            root["dest"] = "toolLife";
+
+            vcSendMsgs.push_back(root.toStyledString());
+        }
+    }
+}
+
 int main(int argc,char *argv[]) {
+    cout<<"*************uuid******"<<endl;
+    cout<<GetGuid()<<endl;
     //初始化配置文件
     //machineId配置
-//    initCommConfig("common.properties");
+    initCommConfig("common.properties");
 //    //获取阈值配置文件信息
-//    string tmpToolcontent = getConfigContent("toolLife.json");
-//    if (tmpToolcontent != "") {
-//        initLocalConfig(tmpToolcontent);
-//    }
+    string tmpToolcontent = getConfigContent("toolLife.json");
+    if (tmpToolcontent != "") {
+        initLocalConfig(tmpToolcontent);
+    }
 
     //初始化算法库
 #ifdef WIN32
@@ -717,9 +790,13 @@ int main(int argc,char *argv[]) {
 //启动redis数据采集线程
 //    thread thCollectData(collectDataProcess);
 //    thCollectData.detach();
-
-    //生成获取阈值报文消息
-    vcSendMsgs.push_back(getValConfigMsg());
+//
+//    //生成获取阈值报文消息
+//    vcSendMsgs.push_back(getValConfigMsg());
+//
+//    //启动预警信息计算处理
+//    thread thAlertToolProcess(alertToolProcess,"alarmProcess");
+//    thAlertToolProcess.detach();
 
    //处理消息 发送消息
    while (1) {
