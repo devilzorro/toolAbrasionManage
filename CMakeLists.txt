@@ -34,7 +34,7 @@ link_directories(
 )
 message("on unix platfrom")
 add_executable(toolLife ${source_files})
-target_link_libraries(toolLife hiredis paho-mqttpp3 pthread dl)
+target_link_libraries(toolLife hiredis paho-mqttpp3 pthread dl uuid)
 
 elseif(WIN32)
     message("on windows platfrom")

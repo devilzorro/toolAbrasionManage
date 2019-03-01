@@ -24,17 +24,13 @@
 #else
 #include <mqtt/async_client.h>
 #include <dlfcn.h>
-#include <uuid.h>
+#include <uuid/uuid.h>
 #endif
 
 struct Results {
     double *r;
     int n;
 };
-
-//double *initial();
-//int feed(int toolnum, double load, double *p);
-//Results result(double *u);
 
 #define TOOLCONFIG "toolLife.json"
 #define COMMCONFIG "test.ini"
@@ -55,13 +51,15 @@ string processStatus = "";
 //程序名
 string programName = "";
 
+string programStartPoint = "";
+string programEndPoint = "";
+
 string dllPath = "tooldll.dll";
 string redisAddr = "127.0.0.1";
 int redisPort = 6379;
 string mqttAddr = "127.0.0.1";
 string strMqttPort = "1883";
 
-vector<string> vcRedisKeys;
 vector<string> vcRecvMsgs;
 vector<string> vcSendMsgs;
 
@@ -160,72 +158,6 @@ string GetGuid()
     return string(szuuid);
 }
 
-void testToolDll() {
-    double *p;
-    double *r;
-    int n;
-    Results re;
-    double temp;
-    double toolnum;
-    double load;
-
-    ifstream f;
-    f.open("/home/llj/workspace/toolAbrasionManage/cmake-build-release/rawdata.txt");
-
-    int countNum = 0;
-    int check = 0;
-    double sum = 0;
-    cout<<"init fun"<<endl;
-    if (initFun != NULL) {
-        cout<<"init fun run"<<endl;
-        p = initFun();
-        cout<<"init fun finish"<<endl;
-    } else {
-        cout<<"func pointer NULL"<<endl;
-    }
-
-    cout<<"init finish"<<endl;
-    for (int i = 0; i < 4000; i++) {
-        for (int j = 0; j < 16; j++) {
-            f >> temp;
-//            cout << "temp content:" << temp;
-            if (j == 2) {
-                toolnum = temp;
-                int tmpNum = temp;
-                if(tmpNum == 168) {
-                    countNum++;
-                    cout<<"toolnum:"<<toolnum<<endl;
-                }
-            }
-            else if (j == 3)
-            {
-                load = temp;
-                if(check != countNum) {
-                    check = countNum;
-                    sum = sum + temp;
-                }
-
-            }
-        }
-//        cout << endl;
-
-        feedFun(toolnum,load,p);
-    }
-    f.close();
-
-    double res = sum/countNum;
-    cout<<"******test result:"<<res<<endl;
-
-    re = resultFun(p);
-    printf("******win libtool run success*******\n");
-    r = re.r;
-    n = re.n;
-    for (int i = 0; i < n; ++i) {
-        cout<<"toolNUm:"<<r[i*2]<<endl;
-        cout<<"resultValue:"<<r[i*2+1]<<endl;
-    }
-}
-
 void collectDataProcess() {
     cout<<"collect data thread running"<<endl;
     string tmpProgramName;
@@ -236,10 +168,8 @@ void collectDataProcess() {
             string hKey = "lastMessage_" + machineId;
             string str2010 = "";
             string str2011 = "";
-            redisClient.HGet(hKey,"2010",str2010);
-            redisClient.HGet(hKey,"2011",str2011);
 
-            if (str2010 != "") {
+            if (redisClient.HGet(hKey,"2010",str2010)) {
                 Json::Reader reader10;
                 Json::Value root;
 
@@ -248,7 +178,7 @@ void collectDataProcess() {
                 }
             }
 
-            if (str2011 != "") {
+            if (redisClient.HGet(hKey,"2011",str2011)) {
                 Json::Reader reader11;
                 Json::Value root;
 
@@ -264,28 +194,40 @@ void collectDataProcess() {
 }
 
 Results processToolVal(string flag) {
+    string tmpStartPoint = "";
+    string tmpEndPoint = "";
+
+    if (redisMap.count("programStartTime")&&redisMap.count("programEndTime")) {
+        tmpStartPoint = redisMap["programStartTime"];
+        tmpEndPoint = redisMap["programEndTime"];
+    }
+
     double *tmpPointer;
     double *tmpR;
     Results re;
     tmpPointer = initFun();
+
     while (1) {
         this_thread::sleep_for(chrono::milliseconds(10));
-        if (redisMap.empty()) {
-            if (redisMap.count("startFlag")) {
-                if (redisMap["startFlag"] == "start") {
+        if (!redisMap.empty()) {
+            if (tmpStartPoint != "") {
+                if (redisMap["programStartTime"] != tmpStartPoint) {
                     if (flag == "study") {
                         if (studyStatus == "abort") {
                             break;
                         }
                     }
+                    if (redisMap["programEndTime"] != tmpEndPoint) {
+                        break;
+                    }
                     //获取redis中存储的数据
-                    if (redisMap.count("toolNo")&&redisMap.count("axisLoad")) {
+                    if (redisMap.count("toolNo")&&redisMap.count("load")) {
                         stringstream ss;
                         int toolNo;
                         double tmpload;
                         ss<<redisMap["toolNo"];
                         ss>>toolNo;
-                        ss<<redisMap["axisLoad"];
+                        ss<<redisMap["load"];
                         ss>>tmpload;
                         feedFun(toolNo,tmpload,tmpPointer);
                     }
@@ -676,6 +618,72 @@ void programNameAlarm(string currentName) {
     }
 }
 
+void testToolDll() {
+    double *p;
+    double *r;
+    int n;
+    Results re;
+    double temp;
+    double toolnum;
+    double load;
+
+    ifstream f;
+    f.open("/home/llj/workspace/toolAbrasionManage/cmake-build-release/rawdata.txt");
+
+    int countNum = 0;
+    int check = 0;
+    double sum = 0;
+    cout<<"init fun"<<endl;
+    if (initFun != NULL) {
+        cout<<"init fun run"<<endl;
+        p = initFun();
+        cout<<"init fun finish"<<endl;
+    } else {
+        cout<<"func pointer NULL"<<endl;
+    }
+
+    cout<<"init finish"<<endl;
+    for (int i = 0; i < 4000; i++) {
+        for (int j = 0; j < 16; j++) {
+            f >> temp;
+//            cout << "temp content:" << temp;
+            if (j == 2) {
+                toolnum = temp;
+                int tmpNum = temp;
+                if(tmpNum == 168) {
+                    countNum++;
+                    cout<<"toolnum:"<<toolnum<<endl;
+                }
+            }
+            else if (j == 3)
+            {
+                load = temp;
+                if(check != countNum) {
+                    check = countNum;
+                    sum = sum + temp;
+                }
+
+            }
+        }
+//        cout << endl;
+
+        feedFun(toolnum,load,p);
+    }
+    f.close();
+
+    double res = sum/countNum;
+    cout<<"******test result:"<<res<<endl;
+
+    re = resultFun(p);
+    printf("******win libtool run success*******\n");
+    r = re.r;
+    n = re.n;
+    for (int i = 0; i < n; ++i) {
+        cout<<"toolNUm:"<<r[i*2]<<endl;
+        cout<<"resultValue:"<<r[i*2+1]<<endl;
+    }
+}
+
 int main(int argc,char *argv[]) {
     cout<<"*************uuid******"<<endl;
     cout<<GetGuid()<<endl;
@@ -721,10 +729,9 @@ int main(int argc,char *argv[]) {
     int tmpStatus = dlclose(plib);
     cout<<"dl close stastus:"<<tmpStatus<<endl;
     cout<<"dlopen finish"<<endl;
+
 #endif
 
-
-    cout<<"test thread start"<<endl;
     //本地redis连接
     vcRecvMsgs.clear();
     redisMap.clear();
@@ -788,15 +795,15 @@ int main(int argc,char *argv[]) {
 //    thTest.detach();
 
 //启动redis数据采集线程
-//    thread thCollectData(collectDataProcess);
-//    thCollectData.detach();
-//
-//    //生成获取阈值报文消息
-//    vcSendMsgs.push_back(getValConfigMsg());
-//
-//    //启动预警信息计算处理
-//    thread thAlertToolProcess(alertToolProcess,"alarmProcess");
-//    thAlertToolProcess.detach();
+    thread thCollectData(collectDataProcess);
+    thCollectData.detach();
+
+    //生成获取阈值报文消息
+    vcSendMsgs.push_back(getValConfigMsg());
+
+    //启动预警信息计算处理
+    thread thAlertToolProcess(alertToolProcess,"alarmProcess");
+    thAlertToolProcess.detach();
 
    //处理消息 发送消息
    while (1) {
