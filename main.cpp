@@ -63,7 +63,14 @@ string strMqttPort = "1883";
 vector<string> vcRecvMsgs;
 vector<string> vcSendMsgs;
 
+string strHhKeyVal = "";
+string strHlKeyVal = "";
+
+vector<string> vcHhKeysList;
+vector<string> vcHlkeysList;
+
 map<string,string> redisMap;
+
 map<int,double> maxLimMap;
 map<int,double> maxSensMap;
 map<int,double> minLimMap;
@@ -169,37 +176,103 @@ void collectDataProcess() {
             string str2010 = "";
             string str2011 = "";
 
-            if (redisClient.HGet(hKey,"2010",str2010)) {
+            if (redisClient.HGet(hKey,strHhKeyVal,str2010)) {
                 Json::Reader reader10;
                 Json::Value root;
 
                 if (reader10.parse(str2010,root)) {
-                    redisMap["load"] = root["cnc_rdspmeter[0]"].asString();
+                    for (int i = 0; i < vcHhKeysList.size(); ++i) {
+                        redisMap["load"] = root[vcHhKeysList[i]].asString();
+                    }
+
                 }
             }
 
-            if (redisClient.HGet(hKey,"2011",str2011)) {
+            if (redisClient.HGet(hKey,strHlKeyVal,str2011)) {
                 Json::Reader reader11;
                 Json::Value root;
 
                 if (reader11.parse(str2011,root)) {
-                    redisMap["toolNo"] = root["ext_toolno"].toStyledString();
-                    redisMap["currentProgram"] = root["cnc_exeprgname"].toStyledString();
-                    redisMap["programStartTime"] = root["programStartTime"].toStyledString();
-                    redisMap["programEndTime"] = root["programEndTime"].toStyledString();
+                    for (int i = 0; i < vcHlkeysList.size(); ++i) {
+                        if (vcHlkeysList[i] == "ext_toolno") {
+                            redisMap["toolNo"] = root["ext_toolno"].asString();
+                        }
+                        if (vcHlkeysList[i] == "cnc_exeprgname") {
+                            redisMap["currentProgram"] = root["cnc_exeprgname"].asString();
+                        }
+                        if (vcHlkeysList[i] == "programStartTime") {
+                            redisMap["programStartTime"] = root["programStartTime"].asString();
+                        }
+                        if (vcHlkeysList[i] == "programEndTime") {
+                            redisMap["programEndTime"] = root["programEndTime"].asString();
+                        }
+                        if (vcHlkeysList[i] == "jobCounteByStatus") {
+                            redisMap["jobCounteByStatus"] = root["jobCounteByStatus"].asString();
+                        }
+                        if (vcHlkeysList[i] == "cnc_statinfo[3]") {
+                            redisMap["machineWorkStatus"] = root["cnc_statinfo[3]"].asString();
+                        }
+                    }
+
                 }
             }
         }
     }
 }
 
+void programNameAlarm(string currentName) {
+    if (currentName != "") {
+        if (currentName != programName) {
+            Json::Value root;
+            Json::Value contentRoot;
+            Json::Value dataRoot;
+
+            dataRoot["time"] = getCurrentTime();
+            dataRoot["errorId"] = GetGuid();
+            dataRoot["detail"] = "当前程序名与已学习程序名不符";
+
+            contentRoot["data"] = dataRoot.toStyledString();
+            contentRoot["dest"] = "toolLife";
+            contentRoot["order"] = 227;
+            contentRoot["switchs"] = "on";
+            contentRoot["frequency"] = 1;
+            contentRoot["source"] = "";
+            contentRoot["cmdId"] = "";
+            contentRoot["level"] = 7;
+            contentRoot["concurrent"] = "true";
+
+            root["content"] = contentRoot.toStyledString();
+            root["encode"] = false;
+            root["machineNo"] = machineId;
+            root["type"] = 20;
+            root["order"] = 227;
+            root["dest"] = "toolLife";
+
+            vcSendMsgs.push_back(root.toStyledString());
+        }
+    }
+}
+
+
 Results processToolVal(string flag) {
     string tmpStartPoint = "";
     string tmpEndPoint = "";
 
+    string tmpMachineStatus = "";
+    string tmpEndStatus = "";
+
     if (redisMap.count("programStartTime")&&redisMap.count("programEndTime")) {
         tmpStartPoint = redisMap["programStartTime"];
         tmpEndPoint = redisMap["programEndTime"];
+    }
+
+    if (redisMap.count("machineWorkStatus")) {
+        tmpMachineStatus = redisMap["machineWorkStatus"];
+    }
+
+    //程序名变更报警报文
+    if (flag == "alarmProcess") {
+        programNameAlarm(redisMap["currentProgram"]);
     }
 
     double *tmpPointer;
@@ -210,29 +283,54 @@ Results processToolVal(string flag) {
     while (1) {
         this_thread::sleep_for(chrono::milliseconds(10));
         if (!redisMap.empty()) {
-            if (tmpStartPoint != "") {
-                if (redisMap["programStartTime"] != tmpStartPoint) {
-                    if (flag == "study") {
-                        if (studyStatus == "abort") {
+            if (redisMap["jobCounteByStatus"] == "false") {
+                if (tmpStartPoint != "") {
+                    if (redisMap["programStartTime"] != tmpStartPoint) {
+                        if (flag == "study") {
+                            if (studyStatus == "abort") {
+                                break;
+                            }
+                        }
+
+                        if (redisMap["programEndTime"] != tmpEndPoint) {
                             break;
                         }
-                    }
-                    if (redisMap["programEndTime"] != tmpEndPoint) {
-                        break;
-                    }
-                    //获取redis中存储的数据
-                    if (redisMap.count("toolNo")&&redisMap.count("load")) {
-                        stringstream ss;
-                        int toolNo;
-                        double tmpload;
-                        ss<<redisMap["toolNo"];
-                        ss>>toolNo;
-                        ss<<redisMap["load"];
-                        ss>>tmpload;
-                        feedFun(toolNo,tmpload,tmpPointer);
+                        //获取redis中存储的数据
+                        if (redisMap.count("toolNo")&&redisMap.count("load")) {
+                            stringstream ss;
+                            int toolNo;
+                            double tmpload;
+                            ss<<redisMap["toolNo"];
+                            ss>>toolNo;
+                            ss<<redisMap["load"];
+                            ss>>tmpload;
+                            feedFun(toolNo,tmpload,tmpPointer);
+                        }
                     }
                 }
+            } else if(redisMap["jobCounteByStatus"] == "true") {
+                if (tmpMachineStatus == "空闲") {
+                    if (redisMap["machineWorkStatus"] == "工作") {
+                        if (redisMap.count("toolNo")&&redisMap.count("load")) {
+                            stringstream ss;
+                            int toolNo;
+                            double tmpload;
+                            ss<<redisMap["toolNo"];
+                            ss>>toolNo;
+                            ss<<redisMap["load"];
+                            ss>>tmpload;
+                            feedFun(toolNo,tmpload,tmpPointer);
+                        }
+                    } else if (redisMap["machineWorkStatus"] == "空闲") {
+                        break;
+                    }
+                } else if (tmpMachineStatus == "工作") {
+                    break;
+                }
+            } else {
+
             }
+
         }
 
     }
@@ -467,11 +565,22 @@ void initLocalConfig(string content) {
 void initToolConfig(string content) {
     if (content != "") {
         Json::Reader reader;
-        Json::Value value;
-        if (reader.parse(content,value)) {
+        Json::Value root;
+        Json::Value hhKeys;
+        Json::Value hlKeys;
+        if (reader.parse(content,root)) {
+            dllPath = root["dllPath"].asString();
+            strHhKeyVal = root["hhkey"].asString();
+            strHlKeyVal = root["hlkey"].asString();
+            hhKeys = root["hhkeyRedis"];
+            hlKeys = root["hlkeyRedis"];
+            for (int i = 0; i < hhKeys.size(); ++i) {
+                vcHhKeysList.push_back(hhKeys[i].asString());
+            }
 
-        } else {
-
+            for (int j = 0; j < hlKeys.size(); ++j) {
+                vcHlkeysList.push_back(hlKeys[j].asString());
+            }
         }
     }
 }
@@ -585,115 +694,20 @@ string getValConfigMsg() {
     return root.toStyledString();
 }
 
-void programNameAlarm(string currentName) {
-    if (currentName != "") {
-        if (currentName != programName) {
-            Json::Value root;
-            Json::Value contentRoot;
-            Json::Value dataRoot;
-
-            dataRoot["time"] = getCurrentTime();
-            dataRoot["errorId"] = "";
-            dataRoot["detail"] = "";
-
-            contentRoot["data"] = dataRoot.toStyledString();
-            contentRoot["dest"] = "toolLife";
-            contentRoot["order"] = 227;
-            contentRoot["switchs"] = "on";
-            contentRoot["frequency"] = 1;
-            contentRoot["source"] = "";
-            contentRoot["cmdId"] = "";
-            contentRoot["level"] = 7;
-            contentRoot["concurrent"] = "true";
-
-            root["content"] = contentRoot.toStyledString();
-            root["encode"] = false;
-            root["machineNo"] = machineId;
-            root["type"] = 20;
-            root["order"] = 227;
-            root["dest"] = "toolLife";
-
-            vcSendMsgs.push_back(root.toStyledString());
-        }
-    }
-}
-
-void testToolDll() {
-    double *p;
-    double *r;
-    int n;
-    Results re;
-    double temp;
-    double toolnum;
-    double load;
-
-    ifstream f;
-    f.open("/home/llj/workspace/toolAbrasionManage/cmake-build-release/rawdata.txt");
-
-    int countNum = 0;
-    int check = 0;
-    double sum = 0;
-    cout<<"init fun"<<endl;
-    if (initFun != NULL) {
-        cout<<"init fun run"<<endl;
-        p = initFun();
-        cout<<"init fun finish"<<endl;
-    } else {
-        cout<<"func pointer NULL"<<endl;
-    }
-
-    cout<<"init finish"<<endl;
-    for (int i = 0; i < 4000; i++) {
-        for (int j = 0; j < 16; j++) {
-            f >> temp;
-//            cout << "temp content:" << temp;
-            if (j == 2) {
-                toolnum = temp;
-                int tmpNum = temp;
-                if(tmpNum == 168) {
-                    countNum++;
-                    cout<<"toolnum:"<<toolnum<<endl;
-                }
-            }
-            else if (j == 3)
-            {
-                load = temp;
-                if(check != countNum) {
-                    check = countNum;
-                    sum = sum + temp;
-                }
-
-            }
-        }
-//        cout << endl;
-
-        feedFun(toolnum,load,p);
-    }
-    f.close();
-
-    double res = sum/countNum;
-    cout<<"******test result:"<<res<<endl;
-
-    re = resultFun(p);
-    printf("******win libtool run success*******\n");
-    r = re.r;
-    n = re.n;
-    for (int i = 0; i < n; ++i) {
-        cout<<"toolNUm:"<<r[i*2]<<endl;
-        cout<<"resultValue:"<<r[i*2+1]<<endl;
-    }
-}
-
 int main(int argc,char *argv[]) {
-    cout<<"*************uuid******"<<endl;
-    cout<<GetGuid()<<endl;
     //初始化配置文件
     //machineId配置
     initCommConfig("common.properties");
 //    //获取阈值配置文件信息
-    string tmpToolcontent = getConfigContent("toolLife.json");
+    string tmpToolcontent = getConfigContent("toolVal.json");
     if (tmpToolcontent != "") {
         initLocalConfig(tmpToolcontent);
+    }
+
+    //获取
+    string tmpToolLifeContent = getConfigContent("toolLife.json");
+    if (tmpToolLifeContent != "") {
+        initToolConfig(tmpToolLifeContent);
     }
 
     //初始化算法库
@@ -707,7 +721,7 @@ int main(int argc,char *argv[]) {
         }
     }
 #else
-    void *plib = dlopen("/home/llj/workspace/toolAbrasionManage/cmake-build-release/libtool.so",RTLD_NOW | RTLD_GLOBAL);
+    void *plib = dlopen("./libtool.so",RTLD_NOW | RTLD_GLOBAL);
     if (!plib) {
         cout<<"error msg:"<<dlerror()<<endl;
     } else {
@@ -726,9 +740,9 @@ int main(int argc,char *argv[]) {
             cout<<"p to fun error:"<<strError<<endl;
         }
     }
-    int tmpStatus = dlclose(plib);
-    cout<<"dl close stastus:"<<tmpStatus<<endl;
-    cout<<"dlopen finish"<<endl;
+//    int tmpStatus = dlclose(plib);
+//    cout<<"dl close stastus:"<<tmpStatus<<endl;
+//    cout<<"dlopen finish"<<endl;
 
 #endif
 
@@ -789,10 +803,6 @@ int main(int argc,char *argv[]) {
            return 1;
        }
    }
-
-   //linux动态库测试
-//    thread thTest(testToolDll);
-//    thTest.detach();
 
 //启动redis数据采集线程
     thread thCollectData(collectDataProcess);
