@@ -180,7 +180,7 @@ bool CRedisClient::HGet(const std::string &key, const std::string &hkey, std::st
 	else
 	{
 		std::string str = m_reply->str;
-		printf("redis hget key[%s] hkey[%s] success, value = %s\n", key.c_str(), hkey.c_str(), str.c_str());
+//		printf("redis hget key[%s] hkey[%s] success, value = %s\n", key.c_str(), hkey.c_str(), str.c_str());
 		value = str;
 		FreeReply();
 		return true;
@@ -230,7 +230,7 @@ bool CRedisClient::CheckStatus()
 
 	else
 	{
-		printf("redis check status: connect ok\n");
+//		printf("redis check status: connect ok\n");
 		FreeReply();
 		return true;
 	}
