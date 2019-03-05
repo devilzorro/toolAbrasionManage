@@ -1,0 +1,21 @@
+{
+  "dllPath": "tooldl.dlll",
+  "hhkey": "2010",
+  "hlkey": "2011",
+  "hhkeyRedis": {
+    "load": "cnc_rdspmeter[0]"
+  },
+  "hlkeyRedis": {
+    "toolNo": "ext_toolno",
+    "programName": "cnc_exeprgname",
+    "programStartTime": "programStartTime",
+    "programEndTime": "programEndTime",
+    "countStatus": "jobCounteByStatus",
+    "mahineStatusKey": "cnc_statinfo[3]"
+  },
+  "machineStatus": {
+    "work": "1",
+    "free": "2",
+    "hold": "3"
+  }
+}

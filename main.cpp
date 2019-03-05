@@ -46,13 +46,13 @@ string studyStatus = "";
 //学习id
 string studyId = "";
 //进入计算特征值状态
-string processStatus = "";
+//string processStatus = "";
 
 //程序名
 string programName = "";
 
-string programStartPoint = "";
-string programEndPoint = "";
+//string programStartPoint = "";
+//string programEndPoint = "";
 
 string dllPath = "tooldll.dll";
 string redisAddr = "127.0.0.1";
@@ -77,7 +77,7 @@ map<int,double> maxSensMap;
 map<int,double> minLimMap;
 map<int,double> minSensMap;
 vector<int> vcNoAlarmTool;
-map<int,double> alertMap;
+//map<int,double> alertMap;
 
 CRedisClient redisClient;
 
@@ -332,7 +332,6 @@ Results processToolVal(string flag) {
                         }
                         //获取redis中存储的数据
                         if (redisMap.count("toolNo")&&redisMap.count("load")) {
-                            cout<<"***********start"<<endl;
                             stringstream ss;
                             int toolNo;
                             double tmpload;
@@ -341,7 +340,6 @@ Results processToolVal(string flag) {
                             ss<<redisMap["load"];
                             ss>>tmpload;
                             feedFun(toolNo,tmpload,tmpPointer);
-                            cout<<"end*************"<<endl;
                         }
                     }
                 }
@@ -851,11 +849,6 @@ int main(int argc,char *argv[]) {
        cout << "  ...OK" << endl;
        cout<<"callback member conn status:"<<cb.bConnStatus<<endl;
 
-        //mqtt发送消息
-//       mqtt::message_ptr msg = mqtt::make_message("hello","msg content1");
-//       msg->set_qos(0);
-//       client.publish(msg)->wait_for(2);
-//       cout<<"pub msg ok"<<endl;
    } catch (const mqtt::exception &exc) {
        cerr << exc.what() << endl;
        return 1;
