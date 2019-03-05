@@ -675,7 +675,7 @@ void processMsg(string strContent) {
                 studyId = dataRoot["studyId"].asString();
                 string studyLimit = dataRoot["studyLimit"].asString();
                 studyStatus = dataRoot["action"].asString();
-                if (studyStatus == "start") {
+                if (studyStatus == "study") {
                     //开始学习
                     thread thStudyProcess(studyProcess,"study",studyId);
                     thStudyProcess.detach();
