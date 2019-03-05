@@ -872,8 +872,8 @@ int main(int argc,char *argv[]) {
     vcSendMsgs.push_back(getValConfigMsg());
 
     //启动预警信息计算处理
-//    thread thAlertToolProcess(alertToolProcess,"alarmProcess");
-//    thAlertToolProcess.detach();
+    thread thAlertToolProcess(alertToolProcess,"alarmProcess");
+    thAlertToolProcess.detach();
 
    //处理消息 发送消息
    while (1) {
