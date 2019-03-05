@@ -126,7 +126,7 @@ public:
         std::cout << "Message arrived :" << std::endl;
         std::cout << "\ttopic: '" << msg->get_topic() << "'" << std::endl;
         std::cout << "\tpayload: '" << msg->to_string() << "'\n" << std::endl;
-//        vcRecvMsgs.push_back(msg->to_string());
+        vcRecvMsgs.push_back(msg->to_string());
     }
 };
 
@@ -166,6 +166,14 @@ string GetGuid()
     return string(szuuid);
 }
 
+//采集机床倍率信息 倍率异常生成报文 预警
+void collectRateProcess() {
+    while (1) {
+        this_thread::sleep_for(chrono::seconds(20));
+
+    }
+}
+
 void collectDataProcess() {
     cout<<"collect data thread running"<<endl;
     string tmpProgramName;
@@ -203,38 +211,9 @@ void collectDataProcess() {
                         redisMap[it->first] = root[it->second].asString();
 //                        cout<<it->second<<" val "<<root[it->second].asString()<<endl;
                     }
-//                    for (int i = 0; i < vcHlkeysList.size(); ++i) {
-//                        if (vcHlkeysList[i] == "ext_toolno") {
-//                            redisMap["toolNo"] = root["ext_toolno"].asString();
-////                            cout<<"toolNo:"<<redisMap["toolNo"]<<endl;
-//                        }
-//                        if (vcHlkeysList[i] == "cnc_exeprgname") {
-//                            redisMap["currentProgram"] = root["cnc_exeprgname"].asString();
-////                            cout<<"currentProgram:"<<redisMap["currentProgram"]<<endl;
-//                        }
-//                        if (vcHlkeysList[i] == "programStartTime") {
-//                            redisMap["programStartTime"] = root["programStartTime"].asString();
-////                            cout<<"programStartTime:"<<redisMap["programStartTime"]<<endl;
-//                        }
-//                        if (vcHlkeysList[i] == "programEndTime") {
-//                            redisMap["programEndTime"] = root["programEndTime"].asString();
-////                            cout<<"programEndTime:"<<redisMap["programEndTime"]<<endl;
-//                        }
-//                        if (vcHlkeysList[i] == "jobCounteByStatus") {
-//                            redisMap["jobCounteByStatus"] = root["jobCounteByStatus"].asString();
-//                        }
-//                        if (vcHlkeysList[i] == "cnc_statinfo[3]") {
-//                            redisMap["machineWorkStatus"] = root["cnc_statinfo[3]"].asString();
-//                        }
-//                    }
 
                 }
             }
-//            map<string,string>::iterator it;
-//            for (it=redisMap.begin();it!=redisMap.end();++it) {
-//                cout<<"redis map key:"<<it->first<<endl;
-//                cout<<"redis map val:"<<it->second<<endl;
-//            }
         }
     }
 }
@@ -319,7 +298,7 @@ Results processToolVal(string flag) {
             if (redisMap["countStatus"] == "false") {
                 if (tmpStartPoint != "") {
                     if (redisMap["programStartTime"] != tmpStartPoint) {
-                        cout<<"counting..."<<endl;
+//                        cout<<"counting..."<<endl;
                         if (flag == "study") {
                             if (studyStatus == "abort") {
                                 break;
@@ -665,8 +644,19 @@ void processMsg(string strContent) {
     Json::Value root;
     if (reader.parse(strContent,root)) {
         int iOrder = root["order"].asInt();
-        Json::Value contentRoot = root["content"];
-        Json::Value dataRoot = contentRoot["data"];
+        Json::Reader contentReader;
+        Json::Value contentRoot;
+        Json::Reader dataReader;
+        Json::Value dataRoot;
+        string strContent = root["content"].asString();
+        if(contentReader.parse(strContent,contentRoot)) {
+            string strData = contentRoot["data"].asString();
+            if (strData != "") {
+                if (dataReader.parse(strData,dataRoot)) {
+                }
+            }
+
+        }
         //阈值配置信息报文
         if (iOrder == 222) {
             //收到阈值信息后先将信息写入本地文件中保存
