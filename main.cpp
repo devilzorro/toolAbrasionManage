@@ -311,13 +311,14 @@ Results processToolVal(string flag) {
                         }
                         //获取redis中存储的数据
                         if (redisMap.count("toolNo")&&redisMap.count("load")) {
-                            stringstream ss;
+                            stringstream ssToolNo;
+                            stringstream ssLoad;
                             int toolNo;
                             double tmpload;
-                            ss<<redisMap["toolNo"];
-                            ss>>toolNo;
-                            ss<<redisMap["load"];
-                            ss>>tmpload;
+                            ssToolNo<<redisMap["toolNo"];
+                            ssToolNo>>toolNo;
+                            ssLoad<<redisMap["load"];
+                            ssLoad>>tmpload;
                             feedFun(toolNo,tmpload,tmpPointer);
                         }
                     }
@@ -893,10 +894,6 @@ int main(int argc,char *argv[]) {
    }
 
 
-    cout<<"input x to test local redis connect"<<endl;
-    while (std::tolower(std::cin.get()) != 'x') {
-
-    }
 //
     cout<<"input q to exit"<<endl;
     while (std::tolower(std::cin.get()) != 'q') {
