@@ -292,6 +292,8 @@ Results processToolVal(string flag) {
     Results re;
     tmpPointer = initFun();
 
+    long tmpCount = 0;
+    double tmpSum = 0;
     while (1) {
         this_thread::sleep_for(chrono::milliseconds(10));
         if (!redisMap.empty()) {
@@ -311,6 +313,7 @@ Results processToolVal(string flag) {
                         }
                         //获取redis中存储的数据
                         if (redisMap.count("toolNo")&&redisMap.count("load")) {
+                            tmpCount++;
                             stringstream ssToolNo;
                             stringstream ssLoad;
                             int toolNo;
@@ -320,6 +323,7 @@ Results processToolVal(string flag) {
                             ssLoad<<redisMap["load"];
                             ssLoad>>tmpload;
                             feedFun(toolNo,tmpload,tmpPointer);
+                            tmpSum = tmpSum + tmpload;
                         }
                     }
                 }
@@ -353,7 +357,8 @@ Results processToolVal(string flag) {
     }
 
     cout<<"count val process end"<<endl;
-
+    double tmpDresult = tmpSum/tmpCount;
+    cout<<"********test result:"<<tmpDresult<<endl;
     re = resultFun(tmpPointer);
 //    delete tmpPointer;
 //    tmpPointer = NULL;
