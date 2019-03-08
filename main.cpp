@@ -51,6 +51,8 @@ string studyId = "";
 //程序名
 string programName = "";
 
+string localTopic  = "Command/x/";
+
 //string programStartPoint = "";
 //string programEndPoint = "";
 
@@ -62,6 +64,7 @@ string strMqttPort = "1883";
 
 vector<string> vcRecvMsgs;
 vector<string> vcSendMsgs;
+vector<string> vcSendLocalMsgs;
 
 string strHhKeyVal = "2010";
 string strHlKeyVal = "2011";
@@ -69,6 +72,13 @@ string strHlKeyVal = "2011";
 map<string,string> HhKeysMap;
 map<string,string> HlKeysMap;
 map<string,string> machineStatusMap;
+map<string,string> addrMap;
+map<string,string> readAddrMap;
+
+map<int,double> sumMap;
+map<int,long> countMap;
+map<int,double> resultMap;
+
 
 map<string,string> redisMap;
 
@@ -83,7 +93,7 @@ CRedisClient redisClient;
 
 typedef double *(*pInitFun)();
 typedef int (*pFeedFun)(int toolNum, double load,double *p);
-typedef Results (*pResultFun)(double *p);
+typedef char* (*pResultFun)(double *p);
 
 pInitFun initFun;
 pFeedFun feedFun;
@@ -252,7 +262,7 @@ void programNameAlarm(string currentName) {
 }
 
 
-Results processToolVal(string flag) {
+char* processToolVal(string flag) {
     if (flag == "study") {
         cout<<"start study val count process"<<endl;
     } else {
@@ -287,7 +297,7 @@ Results processToolVal(string flag) {
     cout<<"start point val:"<<tmpStartPoint<<endl;
     cout<<"end point val:"<<tmpEndPoint<<endl;
 
-    double *tmpPointer;
+    double *tmpPointer = new double;
     double *tmpR;
     Results re;
     tmpPointer = initFun();
@@ -359,14 +369,14 @@ Results processToolVal(string flag) {
     cout<<"count val process end"<<endl;
     double tmpDresult = tmpSum/tmpCount;
     cout<<"********test result:"<<tmpDresult<<endl;
-    re = resultFun(tmpPointer);
-//    delete tmpPointer;
-//    tmpPointer = NULL;
-    return re;
+    char* chret = resultFun(tmpPointer);
+    delete tmpPointer;
+    tmpPointer = NULL;
+    return chret;
 }
 
 void studyProcess(string mode,string studyId) {
-    Results studyRe = processToolVal(mode);
+    string studyRe = processToolVal(mode);
     if (studyStatus == "abort") {
         cout<<"study process abort"<<endl;
     } else {
@@ -376,18 +386,30 @@ void studyProcess(string mode,string studyId) {
         Json::Value dataRoot;
         Json::Value studyResult;
 
-        double *r;
-        r = studyRe.r;
-        for (int i = 0; i < studyRe.n; ++i) {
-            int toolNo = r[i*2];
-            double val = r[i*2]+1;
-            Json::Value studyResultContent;
-            studyResultContent["toolNo"] = toolNo;
-            studyResultContent["value"] = val;
-            studyResult.append(studyResultContent);
+//        double *r;
+//        r = studyRe.r;
+//        for (int i = 0; i < studyRe.n; ++i) {
+//            int toolNo = r[i*2];
+//            double val = r[i*2]+1;
+//            Json::Value studyResultContent;
+//            studyResultContent["toolNo"] = toolNo;
+//            studyResultContent["value"] = val;
+//            studyResult.append(studyResultContent);
+//        }
+//        delete r;
+//        r = NULL;
+        Json::Value jRets;
+        Json::Reader jReader;
+        if (jReader.parse(studyRe,jRets)) {
+            Json::Value tmpArray;
+            tmpArray = jRets["result"];
+            for (int i = 0; i < tmpArray.size(); ++i) {
+                Json::Value studyResultContent;
+                studyResultContent["toolNo"] = tmpArray[i]["toolnum"].asInt();
+                studyResultContent["value"] = tmpArray[i]["load"].asDouble();
+                studyResult.append(studyResultContent);
+            }
         }
-        delete r;
-        r = NULL;
 
         dataRoot["fileName"] = redisMap["programName"];
         dataRoot["studyId"] = studyId;
@@ -420,7 +442,7 @@ void studyProcess(string mode,string studyId) {
 
 void alertToolProcess(string mode) {
     while (1) {
-        Results recordVal = processToolVal(mode);
+        string recordVal = processToolVal(mode);
         //进行预警处理，生成预警报文
         Json::Value root;
         Json::Value contentRoot;
@@ -430,13 +452,20 @@ void alertToolProcess(string mode) {
         bool bAlarm = false;
 
         double *r;
-        r = recordVal.r;
-        for (int i = 0; i < recordVal.n; ++i) {
-            int toolNo = r[i*2];
-            double val = r[i*2] + 1;
+//        r = recordVal.r;
+        Json::Reader tmpReader;
+        Json::Value tmpRoot;
+        Json::Value tmpArray;
+        if (tmpReader.parse(recordVal,tmpRoot)) {
+            tmpArray = tmpRoot["result"];
+        }
+
+        for (int i = 0; i < tmpArray.size(); ++i) {
+            int toolNo = tmpArray[i]["toolnum"].asInt();
+            double val = tmpArray[i]["load"].asDouble();
             Json::Value valContent;
-            valContent["toolNo"] = toolNo;
-            valContent["value"] = val;
+            valContent["toolNo"] = tmpArray[i]["toolnum"].asInt();
+            valContent["value"] = tmpArray[i]["load"].asDouble();
             characteristicValueRoot.append(valContent);
 
             if ((!maxLimMap.empty())&&(maxLimMap.count(toolNo))) {
@@ -462,6 +491,24 @@ void alertToolProcess(string mode) {
 
         if (bAlarm) {
             dataRoot["hasAlarm"] = 1;
+            if (1) {
+                //生成向机床报警暂停信息
+                Json::Value alarmRoot;
+                Json::Value writeValRoot;
+
+                alarmRoot["type"] = -99;
+                alarmRoot["order"] = 2;
+
+                map<string,string>::iterator iterator1;
+                for (iterator1=addrMap.begin();iterator1!=addrMap.end();iterator1++) {
+                    Json::Value arrayObj;
+                    arrayObj[iterator1->second] = "1";
+                    writeValRoot.append(arrayObj);
+                }
+                alarmRoot["writevalue"] = writeValRoot;
+
+                vcSendLocalMsgs.push_back(alarmRoot.toStyledString());
+            }
         } else {
             dataRoot["hasAlarm"] = 0;
         }
@@ -597,6 +644,7 @@ void initToolConfig(string content) {
         Json::Value hhKeys;
         Json::Value hlKeys;
         Json::Value machineStatusRoot;
+        Json::Value addrRoot;
         if (reader.parse(content,root)) {
             dllPath = root["dllPath"].asString();
             strHhKeyVal = root["hhkey"].asString();
@@ -604,6 +652,7 @@ void initToolConfig(string content) {
             hhKeys = root["hhkeyRedis"];
             hlKeys = root["hlkeyRedis"];
             machineStatusRoot = root["machineStatus"];
+            addrRoot = root["addr"];
 
             HlKeysMap["toolNo"] = hlKeys["toolNo"].asString();
             HlKeysMap["programName"] = hlKeys["programName"].asString();
@@ -617,9 +666,12 @@ void initToolConfig(string content) {
             machineStatusMap["work"] = machineStatusRoot["work"].asString();
             machineStatusMap["free"] = machineStatusRoot["free"].asString();
             machineStatusMap["hold"] = machineStatusRoot["hold"].asString();
+
+            addrMap["alarm"] = addrRoot["alarm"].asString();
         }
     }
 
+    cout<<"HhKeyMap:"<<endl;
     map<string,string>::iterator it;
     for (it = HhKeysMap.begin();it!=HhKeysMap.end();++it) {
         cout<<it->first<<" "<<it->second<<endl;
@@ -807,6 +859,8 @@ int main(int argc,char *argv[]) {
 
     //本地redis连接
     vcRecvMsgs.clear();
+    vcSendMsgs.clear();
+    vcSendLocalMsgs.clear();
     redisMap.clear();
     bool redisStatus = false;
     int redisCount = 0;
@@ -893,7 +947,19 @@ int main(int argc,char *argv[]) {
                mqtt::message_ptr msg = mqtt::make_message(PUBTOPIC,tmpSendMsg);
                msg->set_qos(0);
                client.publish(msg)->wait_for(2);
-               cout<<"pub msg ok"<<endl;
+               cout<<"pub cloud msg ok"<<endl;
+           }
+
+           if (!vcSendLocalMsgs.empty()) {
+               //发送消息
+               vector<string>::iterator it = vcSendLocalMsgs.begin();
+               string tmpSendMsg = (*it);
+               vcSendLocalMsgs.erase(it);
+               localTopic = localTopic + machineId;
+               mqtt::message_ptr msg = mqtt::make_message(localTopic,tmpSendMsg);
+               msg->set_qos(0);
+               client.publish(msg)->wait_for(2);
+               cout<<"pub local msg ok"<<endl;
            }
        }
    }
