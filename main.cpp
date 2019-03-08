@@ -88,6 +88,7 @@ map<int,double> minLimMap;
 map<int,double> minSensMap;
 vector<int> vcNoAlarmTool;
 //map<int,double> alertMap;
+Json::Value jAddrVal;
 
 CRedisClient redisClient;
 
@@ -491,24 +492,22 @@ void alertToolProcess(string mode) {
 
         if (bAlarm) {
             dataRoot["hasAlarm"] = 1;
-            if (1) {
-                //生成向机床报警暂停信息
-                Json::Value alarmRoot;
-                Json::Value writeValRoot;
+            //生成向机床报警暂停信息
+            Json::Value alarmRoot;
+            Json::Value writeValRoot;
 
-                alarmRoot["type"] = -99;
-                alarmRoot["order"] = 2;
+            alarmRoot["type"] = -99;
+            alarmRoot["order"] = 2;
 
-                map<string,string>::iterator iterator1;
-                for (iterator1=addrMap.begin();iterator1!=addrMap.end();iterator1++) {
-                    Json::Value arrayObj;
-                    arrayObj[iterator1->second] = "1";
-                    writeValRoot.append(arrayObj);
-                }
-                alarmRoot["writevalue"] = writeValRoot;
-
-                vcSendLocalMsgs.push_back(alarmRoot.toStyledString());
+            map<string,string>::iterator iterator1;
+            for (iterator1=addrMap.begin();iterator1!=addrMap.end();iterator1++) {
+                Json::Value arrayObj;
+                arrayObj[iterator1->second] = "1";
+                writeValRoot.append(arrayObj);
             }
+            alarmRoot["writevalue"] = writeValRoot;
+
+            vcSendLocalMsgs.push_back(alarmRoot.toStyledString());
         } else {
             dataRoot["hasAlarm"] = 0;
         }
@@ -668,6 +667,7 @@ void initToolConfig(string content) {
             machineStatusMap["hold"] = machineStatusRoot["hold"].asString();
 
             addrMap["alarm"] = addrRoot["alarm"].asString();
+            jAddrVal = root["readAddr"];
         }
     }
 
@@ -804,6 +804,72 @@ string getValConfigMsg() {
     return root.toStyledString();
 }
 
+string readAddrKeyVal(Json::Value val,string keyName) {
+    string retStr = "";
+    if (val != NULL) {
+        for (int i = 0; i < val.size(); ++i) {
+            Json::Value::Members members = val[i].getMemberNames();
+            for (Json::Value::Members::iterator iter = members.begin();iter!=members.end();iter++) {
+                if ((*iter) == keyName) {
+                    string readType = val[i]["bt"].asString();
+                    string readBit = val[i]["bit"].asString();
+                    string effectVal = val[i]["val"].asString();
+                    if (readType == "true") {
+//                        string mapVal = redisMap["keyName"];
+                        int iBit;
+                        int iMapVal;
+                        stringstream ssInt;
+                        stringstream ssMapVal;
+                        ssInt<<readBit;
+                        ssInt>>iBit;
+                        ssMapVal<<redisMap[keyName];
+                        ssMapVal>>iMapVal;
+                        if((iMapVal&(1<<iBit)) == 1) {
+                            retStr = "1";
+                        } else {
+                            retStr = "0";
+                        }
+                    } else {
+                        if (effectVal == redisMap[keyName]) {
+                            retStr = "1";
+                        } else {
+                            retStr = "0";
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return retStr;
+}
+
+void resetValProcess() {
+    while (1) {
+        this_thread::sleep_for(chrono::milliseconds(10));
+        if (!redisMap.empty()) {
+            string tmpResetVal = "";
+            if (redisMap.count("resetKey")&&(readAddrKeyVal(jAddrVal,"resetKey") == "1")) {
+                tmpResetVal = "1";
+            }
+            if ((tmpResetVal != "")&&(tmpResetVal == "1")) {
+                if (readAddrKeyVal(jAddrVal,"resetKey") == "0") {
+                    tmpResetVal = "0";
+                    //发送reset报警信息
+                    Json::Value tmpAlarmRoot;
+                    Json::Value writeArray;
+                    tmpAlarmRoot["type"] = -99;
+                    tmpAlarmRoot["order"] = 2;
+                    Json::Value tmpObj;
+                    tmpObj[addrMap["alarm"]] = "0";
+                    writeArray.append(tmpObj);
+                    tmpAlarmRoot["writeValue"] = writeArray;
+                    vcSendLocalMsgs.push_back(tmpAlarmRoot.toStyledString());
+                }
+            }
+        }
+    }
+}
+
 int main(int argc,char *argv[]) {
     //初始化配置文件
     //machineId配置
@@ -924,6 +990,10 @@ int main(int argc,char *argv[]) {
     //启动预警信息计算处理
     thread thAlertToolProcess(alertToolProcess,"alarmProcess");
     thAlertToolProcess.detach();
+
+    //处理reset报警状态
+    thread thResetAlarm(resetValProcess);
+    thResetAlarm.detach();
 
    //处理消息 发送消息
    while (1) {

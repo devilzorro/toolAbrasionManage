@@ -11,11 +11,23 @@
     "programStartTime": "programStartTime",
     "programEndTime": "programEndTime",
     "countStatus": "jobCounteByStatus",
-    "mahineStatusKey": "cnc_statinfo[3]"
+    "mahineStatusKey": "cnc_statinfo[3]",
+    "resetKey": "pmc_rdpmcrng[1,1,1,1]"
   },
   "machineStatus": {
     "work": "1",
     "free": "2",
     "hold": "3"
-  }
+  },
+  "addr": {
+    "alarm": "cnc_wrmacro[500]"
+  },
+  "readAddr": [
+    {
+      "resetKey": "pmc_rdpmcrng[1,1,1,1]",
+      "bt": "true",
+      "bit": "1",
+      "val": ""
+    }
+  ]
 }
