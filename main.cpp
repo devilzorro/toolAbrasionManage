@@ -372,7 +372,7 @@ char* processToolVal(string flag) {
     cout<<"********test result:"<<tmpDresult<<endl;
     char* chret = resultFun(tmpPointer);
     delete tmpPointer;
-    tmpPointer = NULL;
+//    tmpPointer = NULL;
     return chret;
 }
 
@@ -874,15 +874,23 @@ int main(int argc,char *argv[]) {
     //初始化配置文件
     //machineId配置
     programName = "test.iso";
+#ifdef WIN32
     initCommConfig("common.properties");
 //    //获取阈值配置文件信息
     string tmpToolcontent = getConfigContent("toolVal.json");
+    string tmpToolLifeContent = getConfigContent("toolLife.json");
+#else
+    initCommConfig("./common.properties");
+//    //获取阈值配置文件信息
+    string tmpToolcontent = getConfigContent("./toolVal.json");
+    string tmpToolLifeContent = getConfigContent("./toolLife.json");
+#endif
     if (tmpToolcontent != "") {
         initLocalConfig(tmpToolcontent);
     }
 
     //获取
-    string tmpToolLifeContent = getConfigContent("toolLife.json");
+
     if (tmpToolLifeContent != "") {
         initToolConfig(tmpToolLifeContent);
     }
