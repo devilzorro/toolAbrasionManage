@@ -873,7 +873,7 @@ void resetValProcess() {
 int main(int argc,char *argv[]) {
     //初始化配置文件
     //machineId配置
-    programName = "test.iso";
+//    programName = "test.iso";
 #ifdef WIN32
     initCommConfig("common.properties");
 //    //获取阈值配置文件信息
