@@ -48,8 +48,11 @@ string studyId = "";
 //进入计算特征值状态
 //string processStatus = "";
 
-//程序名
+//配置文件中程序名
 string programName = "";
+
+//机头号
+string configMachineNo = "";
 
 string localTopic  = "Command/x/";
 
@@ -580,8 +583,8 @@ void initLocalConfig(string content) {
         Json::Value dataRoot;
 
         if (reader.parse(content,dataRoot)) {
-            string fileName = dataRoot["fileName"].asString();
-            string deviceNo = dataRoot["deviceNo"].asString();
+            programName = dataRoot["fileName"].asString();
+            configMachineNo = dataRoot["deviceNo"].asString();
             Json::Value characteristicMax = dataRoot["characteristicMax"];
             if (characteristicMax != NULL) {
                 for (int i = 0; i < characteristicMax.size(); ++i) {
