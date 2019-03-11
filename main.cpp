@@ -241,7 +241,7 @@ void programNameAlarm(string currentName) {
 
             dataRoot["time"] = getCurrentTime();
             dataRoot["errorId"] = GetGuid();
-            dataRoot["detail"] = "current program name error";
+            dataRoot["detail"] = "current program name:" +redisMap["programName"] + " error";
 
             contentRoot["data"] = dataRoot.toStyledString();
             contentRoot["dest"] = "toolLife";
