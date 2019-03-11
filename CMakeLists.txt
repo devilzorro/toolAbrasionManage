@@ -26,15 +26,19 @@ foreach(srcdir ${srcdirs})
     aux_source_directory(${srcdir} source_files)
 endforeach()
 
-link_directories(
-        libs/hiredis/
-        libs/mqtt/
-        libs/tooldll/
-        .
-)
+#link_directories(
+#        libs/hiredis/
+#        libs/mqtt/
+#        libs/tooldll/
+#        .
+#)
+    link_directories(
+            /home/i5/bin/toolLife/
+    )
+
 message("on unix platfrom")
 add_executable(toolLife ${source_files})
-target_link_libraries(toolLife hiredis paho-mqttpp3 pthread dl uuid)
+target_link_libraries(toolLife libhiredis.a libpaho-mqttpp3.so pthread dl uuid)
 
 elseif(WIN32)
     message("on windows platfrom")

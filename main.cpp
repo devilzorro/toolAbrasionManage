@@ -204,10 +204,16 @@ void collectDataProcess() {
                 Json::Value root;
 
                 if (reader10.parse(str2010,root)) {
-                    map<string,string>::iterator it;
-                    for (it=HhKeysMap.begin();it!=HhKeysMap.end();++it) {
-                        redisMap[it->first] = root[it->second].asString();
+                    string strRootVal = root["val"].asString();
+                    Json::Reader tmpReader;
+                    Json::Value rootVal;
+                    if (tmpReader.parse(strRootVal,rootVal)) {
+                        map<string,string>::iterator it;
+                        for (it=HhKeysMap.begin();it!=HhKeysMap.end();++it) {
+                            redisMap[it->first] = rootVal[it->second].asString();
+                        }
                     }
+
 //                    for (int i = 0; i < vcHhKeysList.size(); ++i) {
 //                        redisMap["load"] = root[vcHhKeysList[i]].asString();
 //                    }
@@ -220,12 +226,16 @@ void collectDataProcess() {
                 Json::Value root;
 
                 if (reader11.parse(str2011,root)) {
-                    map<string,string>::iterator it;
-                    for (it=HlKeysMap.begin();it!=HlKeysMap.end();++it) {
-                        redisMap[it->first] = root[it->second].asString();
+                    string strRootVal = root["val"].asString();
+                    Json::Reader tmpReader;
+                    Json::Value rootVal;
+                    if (tmpReader.parse(strRootVal,rootVal)) {
+                        map<string,string>::iterator it;
+                        for (it=HlKeysMap.begin();it!=HlKeysMap.end();++it) {
+                            redisMap[it->first] = rootVal[it->second].asString();
 //                        cout<<it->second<<" val "<<root[it->second].asString()<<endl;
+                        }
                     }
-
                 }
             }
         }
@@ -897,10 +907,10 @@ int main(int argc,char *argv[]) {
     string tmpToolcontent = getConfigContent("toolVal.json");
     string tmpToolLifeContent = getConfigContent("toolLife.json");
 #else
-    initCommConfig("./common.properties");
+    initCommConfig("/home/i5/config/common/common.properties");
 //    //获取阈值配置文件信息
-    string tmpToolcontent = getConfigContent("./toolVal.json");
-    string tmpToolLifeContent = getConfigContent("./toolLife.json");
+    string tmpToolcontent = getConfigContent("/home/i5/config/toolLife/toolVal.json");
+    string tmpToolLifeContent = getConfigContent("/home/i5/config/toolLife/toolLife.json");
 #endif
     if (tmpToolcontent != "") {
         initLocalConfig(tmpToolcontent);
