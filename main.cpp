@@ -230,7 +230,7 @@ void collectDataProcess() {
 }
 
 void programNameAlarm(string currentName) {
-    if (currentName != "") {
+    if ((currentName != "")&&(programName != "")) {
         if (currentName != programName) {
             Json::Value root;
             Json::Value contentRoot;
@@ -305,13 +305,22 @@ char* processToolVal(string flag) {
 
     long tmpCount = 0;
     double tmpSum = 0;
+
+    string currentStartPoint = "";
+    long tmpCountStart = 0;
     while (1) {
         this_thread::sleep_for(chrono::milliseconds(10));
         if (!redisMap.empty()) {
             if (redisMap["countStatus"] == "false") {
                 if (tmpStartPoint != "") {
                     if (redisMap["programStartTime"] != tmpStartPoint) {
-//                        cout<<"counting..."<<endl;
+                        if (tmpCountStart == 0) {
+                            currentStartPoint = redisMap["programStartTime"];
+                        }
+                        tmpCountStart++;
+                        if ((currentStartPoint != "")&&(currentStartPoint != redisMap["programStartTime"])) {
+                            return "";
+                        }
                         if (flag == "study") {
                             if (studyStatus == "abort") {
                                 break;
@@ -401,43 +410,46 @@ void studyProcess(string mode,string studyId) {
 //        r = NULL;
         Json::Value jRets;
         Json::Reader jReader;
-        if (jReader.parse(studyRe,jRets)) {
-            Json::Value tmpArray;
-            tmpArray = jRets["result"];
-            for (int i = 0; i < tmpArray.size(); ++i) {
-                Json::Value studyResultContent;
-                studyResultContent["toolNo"] = tmpArray[i]["toolnum"].asInt();
-                studyResultContent["value"] = tmpArray[i]["load"].asDouble();
-                studyResult.append(studyResultContent);
+        if (studyRe!= "") {
+            if (jReader.parse(studyRe,jRets)) {
+                Json::Value tmpArray;
+                tmpArray = jRets["result"];
+                for (int i = 0; i < tmpArray.size(); ++i) {
+                    Json::Value studyResultContent;
+                    studyResultContent["toolNo"] = tmpArray[i]["toolnum"].asInt();
+                    studyResultContent["value"] = tmpArray[i]["load"].asDouble();
+                    studyResult.append(studyResultContent);
+                }
             }
+
+            dataRoot["fileName"] = redisMap["programName"];
+            dataRoot["studyId"] = studyId;
+            dataRoot["studyResult"] = studyResult;
+
+            contentRoot["dest"] = "toolLife";
+            contentRoot["order"] = 225;
+            contentRoot["switchs"] = "on";
+            contentRoot["frequency"] = 1;
+            contentRoot["source"] = "";
+            contentRoot["cmdId"] = "";
+            contentRoot["level"] = 7;
+            contentRoot["concurrent"] = "true";
+            contentRoot["data"] = dataRoot.toStyledString();
+
+            root["encode"] = false;
+            root["id"] = "";
+            root["machineNo"] = machineId;
+            root["type"] = 20;
+            root["order"] = 225;
+            root["dest"] = "toolLife";
+            root["content"] = contentRoot.toStyledString();
+
+            string strStudyResultMsg = root.toStyledString();
+            cout<<"test studyResult msg:"<<strStudyResultMsg<<endl;
+
+            vcSendMsgs.push_back(strStudyResultMsg);
         }
 
-        dataRoot["fileName"] = redisMap["programName"];
-        dataRoot["studyId"] = studyId;
-        dataRoot["studyResult"] = studyResult;
-
-        contentRoot["dest"] = "toolLife";
-        contentRoot["order"] = 225;
-        contentRoot["switchs"] = "on";
-        contentRoot["frequency"] = 1;
-        contentRoot["source"] = "";
-        contentRoot["cmdId"] = "";
-        contentRoot["level"] = 7;
-        contentRoot["concurrent"] = "true";
-        contentRoot["data"] = dataRoot.toStyledString();
-
-        root["encode"] = false;
-        root["id"] = "";
-        root["machineNo"] = machineId;
-        root["type"] = 20;
-        root["order"] = 225;
-        root["dest"] = "toolLife";
-        root["content"] = contentRoot.toStyledString();
-
-        string strStudyResultMsg = root.toStyledString();
-        cout<<"test studyResult msg:"<<strStudyResultMsg<<endl;
-
-        vcSendMsgs.push_back(strStudyResultMsg);
     }
 }
 
@@ -457,85 +469,87 @@ void alertToolProcess(string mode) {
         Json::Reader tmpReader;
         Json::Value tmpRoot;
         Json::Value tmpArray;
-        if (tmpReader.parse(recordVal,tmpRoot)) {
-            tmpArray = tmpRoot["result"];
-        }
+        if (recordVal != "") {
+            if (tmpReader.parse(recordVal,tmpRoot)) {
+                tmpArray = tmpRoot["result"];
+            }
 
-        for (int i = 0; i < tmpArray.size(); ++i) {
-            int toolNo = tmpArray[i]["toolnum"].asInt();
-            double val = tmpArray[i]["load"].asDouble();
-            Json::Value valContent;
-            valContent["toolNo"] = tmpArray[i]["toolnum"].asInt();
-            valContent["value"] = tmpArray[i]["load"].asDouble();
-            characteristicValueRoot.append(valContent);
+            for (int i = 0; i < tmpArray.size(); ++i) {
+                int toolNo = tmpArray[i]["toolnum"].asInt();
+                double val = tmpArray[i]["load"].asDouble();
+                Json::Value valContent;
+                valContent["toolNo"] = tmpArray[i]["toolnum"].asInt();
+                valContent["value"] = tmpArray[i]["load"].asDouble();
+                characteristicValueRoot.append(valContent);
 
-            if ((!maxLimMap.empty())&&(maxLimMap.count(toolNo))) {
-                if (val > (maxLimMap[toolNo]*maxSensMap[toolNo])) {
-                    bAlarm = true;
-                    Json::Value alarmContent;
-                    alarmContent["toolNo"] = toolNo;
-                    alarmContent["detail"] = "over maxLimit";
-                    alarmDetailRoot.append(alarmContent);
+                if ((!maxLimMap.empty())&&(maxLimMap.count(toolNo))) {
+                    if (val > (maxLimMap[toolNo]*maxSensMap[toolNo])) {
+                        bAlarm = true;
+                        Json::Value alarmContent;
+                        alarmContent["toolNo"] = toolNo;
+                        alarmContent["detail"] = "over maxLimit";
+                        alarmDetailRoot.append(alarmContent);
+                    }
+                }
+
+                if ((!minLimMap.empty())&&(minLimMap.count(toolNo))) {
+                    if (val < (minLimMap[toolNo]*minSensMap[toolNo])) {
+                        bAlarm = true;
+                        Json::Value alarmContent;
+                        alarmContent["toolNo"] = toolNo;
+                        alarmContent["detail"] = "under minLimit";
+                        alarmDetailRoot.append(alarmContent);
+                    }
                 }
             }
 
-            if ((!minLimMap.empty())&&(minLimMap.count(toolNo))) {
-                if (val < (minLimMap[toolNo]*minSensMap[toolNo])) {
-                    bAlarm = true;
-                    Json::Value alarmContent;
-                    alarmContent["toolNo"] = toolNo;
-                    alarmContent["detail"] = "under minLimit";
-                    alarmDetailRoot.append(alarmContent);
+            if (bAlarm) {
+                dataRoot["hasAlarm"] = 1;
+                //生成向机床报警暂停信息
+                Json::Value alarmRoot;
+                Json::Value writeValRoot;
+
+                alarmRoot["type"] = -99;
+                alarmRoot["order"] = 2;
+
+                map<string,string>::iterator iterator1;
+                for (iterator1=addrMap.begin();iterator1!=addrMap.end();iterator1++) {
+                    Json::Value arrayObj;
+                    arrayObj[iterator1->second] = "1";
+                    writeValRoot.append(arrayObj);
                 }
+                alarmRoot["writevalue"] = writeValRoot;
+
+                vcSendLocalMsgs.push_back(alarmRoot.toStyledString());
+            } else {
+                dataRoot["hasAlarm"] = 0;
             }
+            dataRoot["alarmDetail"] = alarmDetailRoot;
+            dataRoot["characteristicValue"] = characteristicValueRoot;
+            dataRoot["fileName"] = redisMap["programName"];
+            dataRoot["time"] = getCurrentTime();
+
+            contentRoot["data"] = dataRoot.toStyledString();
+            contentRoot["dest"] = "toolLife";
+            contentRoot["order"] = 226;
+            contentRoot["switchs"] = "on";
+            contentRoot["frequency"] = 1;
+            contentRoot["source"] = "";
+            contentRoot["cmdId"] = "";
+            contentRoot["level"] = 7;
+            contentRoot["concurrent"] = "true";
+
+            root["content"] = contentRoot.toStyledString();
+            root["encode"] = false;
+            root["id"] = "";
+            root["machineNo"] = machineId;
+            root["type"] = 20;
+            root["order"] = 226;
+            root["dest"] = "toolLife";
+
+            string strValDataMsg = root.toStyledString();
+            vcSendMsgs.push_back(strValDataMsg);
         }
-
-        if (bAlarm) {
-            dataRoot["hasAlarm"] = 1;
-            //生成向机床报警暂停信息
-            Json::Value alarmRoot;
-            Json::Value writeValRoot;
-
-            alarmRoot["type"] = -99;
-            alarmRoot["order"] = 2;
-
-            map<string,string>::iterator iterator1;
-            for (iterator1=addrMap.begin();iterator1!=addrMap.end();iterator1++) {
-                Json::Value arrayObj;
-                arrayObj[iterator1->second] = "1";
-                writeValRoot.append(arrayObj);
-            }
-            alarmRoot["writevalue"] = writeValRoot;
-
-            vcSendLocalMsgs.push_back(alarmRoot.toStyledString());
-        } else {
-            dataRoot["hasAlarm"] = 0;
-        }
-        dataRoot["alarmDetail"] = alarmDetailRoot;
-        dataRoot["characteristicValue"] = characteristicValueRoot;
-        dataRoot["fileName"] = programName;
-        dataRoot["time"] = getCurrentTime();
-
-        contentRoot["data"] = dataRoot.toStyledString();
-        contentRoot["dest"] = "toolLife";
-        contentRoot["order"] = 226;
-        contentRoot["switchs"] = "on";
-        contentRoot["frequency"] = 1;
-        contentRoot["source"] = "";
-        contentRoot["cmdId"] = "";
-        contentRoot["level"] = 7;
-        contentRoot["concurrent"] = "true";
-
-        root["content"] = contentRoot.toStyledString();
-        root["encode"] = false;
-        root["id"] = "";
-        root["machineNo"] = machineId;
-        root["type"] = 20;
-        root["order"] = 226;
-        root["dest"] = "toolLife";
-
-        string strValDataMsg = root.toStyledString();
-        vcSendMsgs.push_back(strValDataMsg);
     }
 
 
