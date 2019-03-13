@@ -11,6 +11,7 @@
 #include "json/json.h"
 #include "redisClient/redisClient.h"
 #include "config/config.h"
+#include "Log4C/Log.h"
 #include <vector>
 #include <time.h>
 #include <map>
@@ -114,7 +115,7 @@ public:
 
     virtual void connected(const string &cause) {
         cout << "callback->connected..." << cause << endl;
-//        DEBUGLOG(cause);
+        DEBUGLOG("callback->connected..." << cause);
         bConnStatus = true;
         int ret;
     }
@@ -125,6 +126,7 @@ public:
      */
     virtual void connection_lost(const string &cause) {
         cout << "callback->connection_lost..." << cause << endl;
+        DEBUGLOG("callback->connection_lost..." << cause);
 //        DEBUGLOG(cause);
 //        mqtt_connect_flag = false;
         //...
@@ -140,6 +142,8 @@ public:
         std::cout << "Message arrived :" << std::endl;
         std::cout << "\ttopic: '" << msg->get_topic() << "'" << std::endl;
         std::cout << "\tpayload: '" << msg->to_string() << "'\n" << std::endl;
+        DEBUGLOG("recv msg topic:"<<msg->get_topic());
+        DEBUGLOG("payload:"<<msg->to_string());
         vcRecvMsgs.push_back(msg->to_string());
     }
 };
@@ -190,6 +194,7 @@ void collectRateProcess() {
 
 void collectDataProcess() {
     cout<<"collect data thread running"<<endl;
+    DEBUGLOG("collect data thread running");
     string tmpProgramName;
     while (1) {
         this_thread::sleep_for(chrono::milliseconds(10));
@@ -310,6 +315,12 @@ char* processToolVal(string flag) {
 
     cout<<"start point val:"<<tmpStartPoint<<endl;
     cout<<"end point val:"<<tmpEndPoint<<endl;
+    DEBUGLOG("start point val:"<<tmpStartPoint);
+    DEBUGLOG("end point val:"<<tmpEndPoint);
+    cout<<"redis toolNo:"<<redisMap["toolNo"]<<endl;
+    cout<<"redis load:"<<redisMap["load"]<<endl;
+    DEBUGLOG("redis toolNo:"<<redisMap["toolNo"]);
+    DEBUGLOG("redis load:"<<redisMap["load"]);
 
     double *tmpPointer = new double;
     double *tmpR;
@@ -325,13 +336,18 @@ char* processToolVal(string flag) {
         this_thread::sleep_for(chrono::milliseconds(10));
         if (!redisMap.empty()) {
             if (redisMap["countStatus"] == "false") {
+//                cout<<"redis jobCountByStatus:"<<redisMap["countStatus"]<<endl;
                 if (tmpStartPoint != "") {
                     if (redisMap["programStartTime"] != tmpStartPoint) {
+//                        cout<<"satrt counting.........."<<endl;
+
                         if (tmpCountStart == 0) {
                             currentStartPoint = redisMap["programStartTime"];
                         }
                         tmpCountStart++;
                         if ((currentStartPoint != "")&&(currentStartPoint != redisMap["programStartTime"])) {
+                            cout<<"error start count end"<<endl;
+                            DEBUGLOG("error start count end");
                             return "";
                         }
                         if (flag == "study") {
@@ -342,9 +358,14 @@ char* processToolVal(string flag) {
 
                         if (redisMap["programEndTime"] != tmpEndPoint) {
                             cout<<"count process end"<<endl;
+                            DEBUGLOG("count process end");
+                            DEBUGLOG("startPointVal:"<<redisMap["programStartTime"]);
+                            DEBUGLOG("endPointVa:"<<redisMap["programEndTime"]);
                             break;
                         }
                         //获取redis中存储的数据
+//                        cout<<"redis toolNo:"<<redisMap["toolNo"]<<endl;
+//                        cout<<"redis load:"<<redisMap["load"]<<endl;
                         if (redisMap.count("toolNo")&&redisMap.count("load")) {
                             tmpCount++;
                             stringstream ssToolNo;
@@ -355,6 +376,8 @@ char* processToolVal(string flag) {
                             ssToolNo>>toolNo;
                             ssLoad<<redisMap["load"];
                             ssLoad>>tmpload;
+//                            cout<<"toolNo"<<toolNo<<endl;
+//                            cout<<"load:"<<tmpload<<endl;
                             feedFun(toolNo,tmpload,tmpPointer);
                             tmpSum = tmpSum + tmpload;
                         }
@@ -390,9 +413,11 @@ char* processToolVal(string flag) {
     }
 
     cout<<"count val process end"<<endl;
+    DEBUGLOG("count val process end");
     double tmpDresult = tmpSum/tmpCount;
     cout<<"********test result:"<<tmpDresult<<endl;
     char* chret = resultFun(tmpPointer);
+    DEBUGLOG("count process result:"<<chret);
     delete tmpPointer;
 //    tmpPointer = NULL;
     return chret;
@@ -402,6 +427,7 @@ void studyProcess(string mode,string studyId) {
     string studyRe = processToolVal(mode);
     if (studyStatus == "abort") {
         cout<<"study process abort"<<endl;
+        DEBUGLOG("study process abort");
     } else {
         //生成阈值报文回复
         Json::Value root;
@@ -459,7 +485,7 @@ void studyProcess(string mode,string studyId) {
 
             string strStudyResultMsg = root.toStyledString();
             cout<<"test studyResult msg:"<<strStudyResultMsg<<endl;
-
+            DEBUGLOG("test studyResult msg:"<<strStudyResultMsg);
             vcSendMsgs.push_back(strStudyResultMsg);
         }
 
@@ -572,6 +598,7 @@ string getConfigContent(string filePth) {
     ifstream configStream(filePth);
     if (!configStream.is_open()) {
         cout<<"error open config file:"<<filePth<<endl;
+        DEBUGLOG("error open config file:"<<filePth);
         return "";
     } else {
         stringstream buffer;
@@ -699,15 +726,19 @@ void initToolConfig(string content) {
     }
 
     cout<<"HhKeyMap:"<<endl;
+    DEBUGLOG("HhKeyMap:");
     map<string,string>::iterator it;
     for (it = HhKeysMap.begin();it!=HhKeysMap.end();++it) {
         cout<<it->first<<" "<<it->second<<endl;
+        DEBUGLOG(it->first<<" "<<it->second);
     }
 
     cout<<"HlKeyMap:"<<endl;
+    DEBUGLOG("HlKeyMap:");
     map<string,string>::iterator it1;
     for (it1 = HlKeysMap.begin();it1!=HlKeysMap.end();++it1) {
         cout<<it1->first<<" "<<it1->second<<endl;
+        DEBUGLOG(it1->first<<" "<<it1->second);
     }
 }
 
@@ -718,8 +749,10 @@ void initCommConfig(string path) {
         config.ReadFile(path);
         machineId = config.Read<string>("machineno","");
         cout<<"***********::"<<machineId<<endl;
+        DEBUGLOG("***********::"<<machineId);
     } else {
         cout<<"ini config file not exist!"<<endl;
+        DEBUGLOG("ini config file not exist!");
     }
 }
 
@@ -762,7 +795,7 @@ void processMsg(string strContent) {
                 studyStatus = dataRoot["action"].asString();
                 if (studyStatus == "study") {
                     //开始学习
-                    thread thStudyProcess(studyProcess,"study",studyId);
+                    std::thread thStudyProcess(studyProcess,"study",studyId);
                     thStudyProcess.detach();
                 }
                 //生成回复报文
@@ -912,6 +945,13 @@ int main(int argc,char *argv[]) {
     string tmpToolcontent = getConfigContent("/home/i5/config/toolLife/toolVal.json");
     string tmpToolLifeContent = getConfigContent("/home/i5/config/toolLife/toolLife.json");
 #endif
+
+    if (!Log::instance().open_log())
+    {
+        std::cout << "Log::open_log() failed" << std::endl;
+    }
+
+
     if (tmpToolcontent != "") {
         initLocalConfig(tmpToolcontent);
     }
@@ -936,6 +976,7 @@ int main(int argc,char *argv[]) {
     void *plib = dlopen("./libtool.so",RTLD_NOW | RTLD_GLOBAL);
     if (!plib) {
         cout<<"error msg:"<<dlerror()<<endl;
+        DEBUGLOG("error msg:"<<dlerror());
     } else {
         cout<<"p to fun"<<endl;
         char *strError;
@@ -968,10 +1009,12 @@ int main(int argc,char *argv[]) {
     while (!redisStatus) {
         redisStatus = redisClient.Connect(redisAddr,redisPort);
         cout<<"redis connect status:"<<redisStatus<<endl;
+        DEBUGLOG("redis connect status:"<<redisStatus);
         redisCount++;
         this_thread::sleep_for(chrono::seconds(1));
         if (redisCount == 10) {
-            cout<<"tool local redis connect fail"<<endl;
+            cout<<"toolLife local redis connect fail"<<endl;
+            DEBUGLOG("toolLife local redis connect fail");
             redisStatus = true;
             return -1;
         }
@@ -1016,18 +1059,18 @@ int main(int argc,char *argv[]) {
    }
 
 //启动redis数据采集线程
-    thread thCollectData(collectDataProcess);
+    std::thread thCollectData(collectDataProcess);
     thCollectData.detach();
 
     //生成获取阈值报文消息
     vcSendMsgs.push_back(getValConfigMsg());
 
     //启动预警信息计算处理
-    thread thAlertToolProcess(alertToolProcess,"alarmProcess");
+    std::thread thAlertToolProcess(alertToolProcess,"alarmProcess");
     thAlertToolProcess.detach();
 
     //处理reset报警状态
-    thread thResetAlarm(resetValProcess);
+    std::thread thResetAlarm(resetValProcess);
     thResetAlarm.detach();
 
    //处理消息 发送消息

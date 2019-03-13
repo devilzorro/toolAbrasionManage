@@ -15,6 +15,7 @@ set(srcdirs
         src/json/
         src/redisClient/
         src/config/
+        src/Log4C/
         .)
 
 include_directories(
@@ -38,7 +39,7 @@ endforeach()
 
 message("on unix platfrom")
 add_executable(toolLife ${source_files})
-target_link_libraries(toolLife libhiredis.a libpaho-mqttpp3.so pthread dl uuid)
+target_link_libraries(toolLife libhiredis.a libpaho-mqttpp3.so log4cplus pthread dl uuid)
 
 elseif(WIN32)
     message("on windows platfrom")
