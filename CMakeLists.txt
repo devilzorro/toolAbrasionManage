@@ -50,6 +50,7 @@ elseif(WIN32)
             src/redisClient/
             src/Win32_Interop/
             src/config/
+            src/Log4C/
             #src/win_stdafx/
             .)
 
@@ -68,10 +69,11 @@ elseif(WIN32)
             libs/hiredis-win/
             libs/mqtt-win/
             libs/tooldll-win/
+            libs/log4c-win/
             .
     )
     add_executable(toolLife ${source_files})
-    target_link_libraries(toolLife hiredis paho-mqtt3a paho-mqttpp3)
+    target_link_libraries(toolLife hiredis paho-mqtt3a paho-mqttpp3 log4cplus)
 
 else()
     message("on a unsupport platfrom")

@@ -256,7 +256,7 @@ void programNameAlarm(string currentName) {
 
             dataRoot["time"] = getCurrentTime();
             dataRoot["errorId"] = GetGuid();
-            dataRoot["detail"] = "程序名变更为："+redisMap["programName"];
+            dataRoot["detail"] = "程序名变更为:"+redisMap["programName"];
 
             contentRoot["data"] = dataRoot.toStyledString();
             contentRoot["dest"] = "toolLife";
