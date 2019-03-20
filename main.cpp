@@ -73,6 +73,8 @@ vector<string> vcSendLocalMsgs;
 string strHhKeyVal = "2010";
 string strHlKeyVal = "2011";
 
+string strprocessStatus = "";
+
 map<string,string> HhKeysMap;
 map<string,string> HlKeysMap;
 map<string,string> machineStatusMap;
@@ -139,11 +141,11 @@ public:
     }
 
     void message_arrived(mqtt::const_message_ptr msg) override {
-        std::cout << "Message arrived :" << std::endl;
-        std::cout << "\ttopic: '" << msg->get_topic() << "'" << std::endl;
+//        std::cout << "Message arrived :" << std::endl;
+//        std::cout << "\ttopic: '" << msg->get_topic() << "'" << std::endl;
         std::cout << "\tpayload: '" << msg->to_string() << "'\n" << std::endl;
-        DEBUGLOG("recv msg topic:"<<msg->get_topic());
-        DEBUGLOG("payload:"<<msg->to_string());
+//        DEBUGLOG("recv msg topic:"<<msg->get_topic());
+//        DEBUGLOG("payload:"<<msg->to_string());
         vcRecvMsgs.push_back(msg->to_string());
     }
 };
@@ -332,6 +334,11 @@ char* processToolVal(string flag) {
 
     string currentStartPoint = "";
     long tmpCountStart = 0;
+
+    string writeName = "./" + tmpStartPoint;
+    ofstream fWrite(writeName);
+
+
     while (1) {
         this_thread::sleep_for(chrono::milliseconds(10));
         if (!redisMap.empty()) {
@@ -341,28 +348,15 @@ char* processToolVal(string flag) {
                     if (redisMap["programStartTime"] != tmpStartPoint) {
 //                        cout<<"satrt counting.........."<<endl;
 
-                        if (tmpCountStart == 0) {
-                            currentStartPoint = redisMap["programStartTime"];
-                        }
-                        tmpCountStart++;
-                        if ((currentStartPoint != "")&&(currentStartPoint != redisMap["programStartTime"])) {
-                            cout<<"error start count end"<<endl;
-                            DEBUGLOG("error start count end");
-                            return "";
-                        }
+
                         if (flag == "study") {
                             if (studyStatus == "abort") {
+                                fWrite.close();
                                 break;
                             }
                         }
 
-                        if (redisMap["programEndTime"] != tmpEndPoint) {
-                            cout<<"count process end"<<endl;
-                            DEBUGLOG("count process end");
-                            DEBUGLOG("startPointVal:"<<redisMap["programStartTime"]);
-                            DEBUGLOG("endPointVa:"<<redisMap["programEndTime"]);
-                            break;
-                        }
+
                         //获取redis中存储的数据
 //                        cout<<"redis toolNo:"<<redisMap["toolNo"]<<endl;
 //                        cout<<"redis load:"<<redisMap["load"]<<endl;
@@ -380,6 +374,37 @@ char* processToolVal(string flag) {
 //                            cout<<"load:"<<tmpload<<endl;
                             feedFun(toolNo,tmpload,tmpPointer);
                             tmpSum = tmpSum + tmpload;
+                            if (fWrite.is_open()) {
+                                string tmpWriteData = redisMap["toolNo"] + " : " + redisMap["load"] + "\n";
+                                fWrite<<tmpWriteData;
+
+                            }
+                        }
+
+                        if (tmpCountStart == 0) {
+                            currentStartPoint = redisMap["programStartTime"];
+                            tmpEndPoint = redisMap["programEndTime"];
+                            cout<<"****************current startPoint:"<<redisMap["programStartTime"];
+                        }
+                        tmpCountStart++;
+                        if ((currentStartPoint != "")&&(currentStartPoint != redisMap["programStartTime"])) {
+                            cout<<"error start count end"<<endl;
+//                            DEBUGLOG("error start count end");
+                            strprocessStatus = "error end";
+                            fWrite.close();
+                            break;
+                        }
+
+                        if (redisMap["programEndTime"] != tmpEndPoint) {
+                            cout<<"******count process end**********"<<endl;
+                            cout<<"********************************"<<endl;
+//                            DEBUGLOG("count process end");
+                            cout<<"END***startPointVal:"<<redisMap["programStartTime"]<<endl;
+                            cout<<"END***endPointVal:"<<redisMap["programEndTime"]<<endl;
+//                            DEBUGLOG("startPointVal:"<<redisMap["programStartTime"]);
+//                            DEBUGLOG("endPointVa:"<<redisMap["programEndTime"]);
+                            fWrite.close();
+                            break;
                         }
                     }
                 }
@@ -423,8 +448,9 @@ char* processToolVal(string flag) {
     return chret;
 }
 
-void studyProcess(string mode,string studyId) {
-    string studyRe = processToolVal(mode);
+void studyProcess(string content,string studyId) {
+//    string studyRe = processToolVal(mode);
+    string studyRe = content;
     if (studyStatus == "abort") {
         cout<<"study process abort"<<endl;
         DEBUGLOG("study process abort");
@@ -450,9 +476,12 @@ void studyProcess(string mode,string studyId) {
         Json::Value jRets;
         Json::Reader jReader;
         if (studyRe!= "") {
+//            cout<<"study retData empty"<<endl;
+            cout<<"***************study retData:"<<studyRe<<endl;
             if (jReader.parse(studyRe,jRets)) {
                 Json::Value tmpArray;
                 tmpArray = jRets["result"];
+                cout<<"study result size:"<<tmpArray.size()<<endl;
                 for (int i = 0; i < tmpArray.size(); ++i) {
                     Json::Value studyResultContent;
                     studyResultContent["toolNo"] = tmpArray[i]["toolnum"].asInt();
@@ -495,6 +524,12 @@ void studyProcess(string mode,string studyId) {
 void alertToolProcess(string mode) {
     while (1) {
         string recordVal = processToolVal(mode);
+
+        if (strprocessStatus == "error end") {
+            recordVal = "";
+            strprocessStatus = "";
+        }
+
         //进行预警处理，生成预警报文
         Json::Value root;
         Json::Value contentRoot;
@@ -512,7 +547,8 @@ void alertToolProcess(string mode) {
             if (tmpReader.parse(recordVal,tmpRoot)) {
                 tmpArray = tmpRoot["result"];
             }
-
+            cout<<"    特征值："<<recordVal<<endl;
+            cout<<"result array size:"<<tmpArray.size()<<endl;
             for (int i = 0; i < tmpArray.size(); ++i) {
                 int toolNo = tmpArray[i]["toolnum"].asInt();
                 double val = tmpArray[i]["load"].asDouble();
@@ -521,25 +557,30 @@ void alertToolProcess(string mode) {
                 valContent["value"] = tmpArray[i]["load"].asDouble();
                 characteristicValueRoot.append(valContent);
 
-                if ((!maxLimMap.empty())&&(maxLimMap.count(toolNo))) {
-                    if (val > (maxLimMap[toolNo]*maxSensMap[toolNo])) {
-                        bAlarm = true;
-                        Json::Value alarmContent;
-                        alarmContent["toolNo"] = toolNo;
-                        alarmContent["detail"] = "over maxLimit";
-                        alarmDetailRoot.append(alarmContent);
+                if (programName != redisMap["programName"]) {
+
+                } else {
+                    if ((!maxLimMap.empty())&&(maxLimMap.count(toolNo))) {
+                        if (val > (maxLimMap[toolNo]*maxSensMap[toolNo])) {
+                            bAlarm = true;
+                            Json::Value alarmContent;
+                            alarmContent["toolNo"] = toolNo;
+                            alarmContent["detail"] = "超过预警上限！";
+                            alarmDetailRoot.append(alarmContent);
+                        }
+                    }
+
+                    if ((!minLimMap.empty())&&(minLimMap.count(toolNo))) {
+                        if (val < (minLimMap[toolNo]*minSensMap[toolNo])) {
+                            bAlarm = true;
+                            Json::Value alarmContent;
+                            alarmContent["toolNo"] = toolNo;
+                            alarmContent["detail"] = "低于预警下限！";
+                            alarmDetailRoot.append(alarmContent);
+                        }
                     }
                 }
 
-                if ((!minLimMap.empty())&&(minLimMap.count(toolNo))) {
-                    if (val < (minLimMap[toolNo]*minSensMap[toolNo])) {
-                        bAlarm = true;
-                        Json::Value alarmContent;
-                        alarmContent["toolNo"] = toolNo;
-                        alarmContent["detail"] = "under minLimit";
-                        alarmDetailRoot.append(alarmContent);
-                    }
-                }
             }
 
             if (bAlarm) {
@@ -557,8 +598,8 @@ void alertToolProcess(string mode) {
                     arrayObj[iterator1->second] = "1";
                     writeValRoot.append(arrayObj);
                 }
-                alarmRoot["writevalue"] = writeValRoot;
-
+                alarmRoot["writeValue"] = writeValRoot;
+                cout<<"*****set alarmkey msg:"<<alarmRoot.toStyledString()<<endl;
                 vcSendLocalMsgs.push_back(alarmRoot.toStyledString());
             } else {
                 dataRoot["hasAlarm"] = 0;
@@ -586,8 +627,15 @@ void alertToolProcess(string mode) {
             root["order"] = 226;
             root["dest"] = "toolLife";
 
-            string strValDataMsg = root.toStyledString();
-            vcSendMsgs.push_back(strValDataMsg);
+            //生成需学习结果报文
+            if (studyStatus == "study") {
+                studyProcess(recordVal,studyId);
+                studyStatus  = "finish";
+
+            } else {
+                string strValDataMsg = root.toStyledString();
+                vcSendMsgs.push_back(strValDataMsg);
+            }
         }
     }
 
@@ -623,10 +671,18 @@ void initLocalConfig(string content) {
             programName = dataRoot["fileName"].asString();
             configMachineNo = dataRoot["deviceNo"].asString();
             Json::Value characteristicMax = dataRoot["characteristicMax"];
+            Json::Value characteristicMin = dataRoot["characteristicMin"];
             if (characteristicMax != NULL) {
                 for (int i = 0; i < characteristicMax.size(); ++i) {
                     maxLimMap[characteristicMax[i]["toolNo"].asInt()] = characteristicMax[i]["value"].asDouble();
                     maxSensMap[characteristicMax[i]["toolNo"].asInt()] = characteristicMax[i]["sens_ty"].asDouble();
+                }
+            }
+
+            if (characteristicMin != NULL) {
+                for (int i = 0; i < characteristicMin.size(); ++i) {
+                    minLimMap[characteristicMin[i]["toolNo"].asInt()] = characteristicMin[i]["value"].asDouble();
+                    minSensMap[characteristicMin[i]["toolNo"].asInt()] = characteristicMin[i]["sens_ty"].asDouble();
                 }
             }
 
@@ -643,26 +699,33 @@ void initLocalConfig(string content) {
                         //刀组阈值上限设置
                         if (maxLimMap.count(iToolNo)) {
                             sameMaxVal = maxLimMap[iToolNo];
-                        } else {
-                            maxLimMap[iToolNo] = sameMaxVal;
+                            for (int k = 0; k < toolArray.size(); ++k) {
+                                maxLimMap[toolArray[k].asInt()] = sameMaxVal;
+                            }
                         }
+
                         //刀组阈值下限设置
                         if (minLimMap.count(iToolNo)) {
                             sameMinVal = minLimMap[iToolNo];
-                        } else {
-                            minLimMap[iToolNo] = sameMinVal;
+                            for (int k = 0; k < toolArray.size(); ++k) {
+                                minLimMap[toolArray[k].asInt()] = sameMinVal;
+                            }
                         }
+
                         //刀组灵敏度上限设置
                         if (maxSensMap.count(iToolNo)) {
                             sameMaxSensVal = maxSensMap[iToolNo];
-                        } else {
-                            maxSensMap[iToolNo] = sameMaxSensVal;
+                            for (int k = 0; k < toolArray.size(); ++k) {
+                                maxSensMap[toolArray[k].asInt()] = sameMaxSensVal;
+                            }
                         }
+
                         //刀组灵敏度下限设置
                         if (minSensMap.count(iToolNo)) {
                             sameMinSensVal = minSensMap[iToolNo];
-                        } else {
-                            minSensMap[iToolNo] = sameMinSensVal;
+                            for (int k = 0; k < toolArray.size(); ++k) {
+                                minSensMap[toolArray[k].asInt()] = sameMinSensVal;
+                            }
                         }
                     }
                 }
@@ -713,6 +776,7 @@ void initToolConfig(string content) {
             HlKeysMap["programEndTime"] = hlKeys["programEndTime"].asString();
             HlKeysMap["countStatus"] = hlKeys["countStatus"].asString();
             HlKeysMap["mahineStatusKey"] = hlKeys["mahineStatusKey"].asString();
+            HlKeysMap["resetKey"] = hlKeys["resetKey"].asString();
 
             HhKeysMap["load"] = hhKeys["load"].asString();
 
@@ -762,72 +826,74 @@ void processMsg(string strContent) {
     Json::Value root;
     if (reader.parse(strContent,root)) {
         int iOrder = root["order"].asInt();
-        Json::Reader contentReader;
-        Json::Value contentRoot;
-        Json::Reader dataReader;
-        Json::Value dataRoot;
-        string strContent = root["content"].asString();
-        if(contentReader.parse(strContent,contentRoot)) {
-            string strData = contentRoot["data"].asString();
-            if (strData != "") {
-                if (dataReader.parse(strData,dataRoot)) {
+        if ((iOrder == 222)||(iOrder == 223)) {
+            Json::Reader contentReader;
+            Json::Value contentRoot;
+            Json::Reader dataReader;
+            Json::Value dataRoot;
+            string strContent = root["content"].asString();
+            if(contentReader.parse(strContent,contentRoot)) {
+                string strData = contentRoot["data"].asString();
+                if (strData != "") {
+                    if (dataReader.parse(strData,dataRoot)) {
+                    }
                 }
-            }
 
-        }
-        //阈值配置信息报文
-        if (iOrder == 222) {
-            //收到阈值信息后先将信息写入本地文件中保存
-            if (dataRoot != NULL) {
-                string configData = dataRoot.toStyledString();
-                ofstream out("toolVal.json");
-                out<<configData<<endl;
-                out.close();
-
-                //处理阈值配置信息
-                initLocalConfig(configData);
             }
-        } else if (iOrder == 223) {
-            //开始学习，终止学习报文
-            if (dataRoot != NULL) {
-                studyId = dataRoot["studyId"].asString();
-                string studyLimit = dataRoot["studyLimit"].asString();
-                studyStatus = dataRoot["action"].asString();
-                if (studyStatus == "study") {
-                    //开始学习
-                    std::thread thStudyProcess(studyProcess,"study",studyId);
-                    thStudyProcess.detach();
+            //阈值配置信息报文
+            if (iOrder == 222) {
+                //收到阈值信息后先将信息写入本地文件中保存
+                if (dataRoot != NULL) {
+                    string configData = dataRoot.toStyledString();
+                    ofstream out("toolVal.json");
+                    out<<configData<<endl;
+                    out.close();
+
+                    //处理阈值配置信息
+                    initLocalConfig(configData);
                 }
-                //生成回复报文
-                Json::Value root;
-                Json::Value contentRoot;
-                Json::Value dataRoot;
+            } else if (iOrder == 223) {
+                //开始学习，终止学习报文
+                if (dataRoot != NULL) {
+                    studyId = dataRoot["studyId"].asString();
+                    string studyLimit = dataRoot["studyLimit"].asString();
+                    studyStatus = dataRoot["action"].asString();
+                    if (studyStatus == "study") {
+                        //开始学习
+//                    std::thread thStudyProcess(studyProcess,"study",studyId);
+//                    thStudyProcess.detach();
+                    }
+                    //生成回复报文
+                    Json::Value root;
+                    Json::Value contentRoot;
+                    Json::Value dataRoot;
 
-                dataRoot["time"] = getCurrentTime();
-                dataRoot["studyId"] = studyId;
+                    dataRoot["time"] = getCurrentTime();
+                    dataRoot["studyId"] = studyId;
 
-                contentRoot["dest"] = "toolLife";
-                contentRoot["order"] = 224;
-                contentRoot["switchs"] = "on";
-                contentRoot["frequency"] = 1;
-                contentRoot["source"] = "";
-                contentRoot["cmdId"] = "";
-                contentRoot["level"] = 7;
-                contentRoot["concurrent"] = "true";
-                contentRoot["data"] = dataRoot.toStyledString();
+                    contentRoot["dest"] = "toolLife";
+                    contentRoot["order"] = 224;
+                    contentRoot["switchs"] = "on";
+                    contentRoot["frequency"] = 1;
+                    contentRoot["source"] = "";
+                    contentRoot["cmdId"] = "";
+                    contentRoot["level"] = 7;
+                    contentRoot["concurrent"] = "true";
+                    contentRoot["data"] = dataRoot.toStyledString();
 
-                root["encode"] = false;
-                root["id"] = "";
-                root["machineNo"] = machineId;
-                root["type"] = 20;
-                root["order"] = 224;
-                root["dest"] = "toolLife";
-                root["content"] = contentRoot.toStyledString();
+                    root["encode"] = false;
+                    root["id"] = "";
+                    root["machineNo"] = machineId;
+                    root["type"] = 20;
+                    root["order"] = 224;
+                    root["dest"] = "toolLife";
+                    root["content"] = contentRoot.toStyledString();
 
-                vcSendMsgs.push_back(root.toStyledString());
+                    vcSendMsgs.push_back(root.toStyledString());
+                }
+            } else {
+
             }
-        } else {
-
         }
     } else {
 
@@ -866,16 +932,19 @@ string getValConfigMsg() {
 
 string readAddrKeyVal(Json::Value val,string keyName) {
     string retStr = "";
+//    cout<<"*************read addr:"<<val.size()<<endl;
     if (val != NULL) {
         for (int i = 0; i < val.size(); ++i) {
             Json::Value::Members members = val[i].getMemberNames();
             for (Json::Value::Members::iterator iter = members.begin();iter!=members.end();iter++) {
                 if ((*iter) == keyName) {
+//                    cout<<"key:"<<keyName<<"exist"<<endl;
                     string readType = val[i]["bt"].asString();
                     string readBit = val[i]["bit"].asString();
                     string effectVal = val[i]["val"].asString();
                     if (readType == "true") {
 //                        string mapVal = redisMap["keyName"];
+//                        cout<<"type true"<<endl;
                         int iBit;
                         int iMapVal;
                         stringstream ssInt;
@@ -884,8 +953,11 @@ string readAddrKeyVal(Json::Value val,string keyName) {
                         ssInt>>iBit;
                         ssMapVal<<redisMap[keyName];
                         ssMapVal>>iMapVal;
-                        if((iMapVal&(1<<iBit)) == 1) {
+//                        cout<<"resetkey val:"<<iMapVal<<endl;
+//                        cout<<(iMapVal&(1<<iBit))<<endl;
+                        if((iMapVal&(1<<iBit)) != 0) {
                             retStr = "1";
+//                            cout<<"ret resetVal:"<<retStr<<endl;
                         } else {
                             retStr = "0";
                         }
@@ -905,12 +977,21 @@ string readAddrKeyVal(Json::Value val,string keyName) {
 
 void resetValProcess() {
     while (1) {
-        this_thread::sleep_for(chrono::milliseconds(10));
-        if (!redisMap.empty()) {
-            string tmpResetVal = "";
-            if (redisMap.count("resetKey")&&(readAddrKeyVal(jAddrVal,"resetKey") == "1")) {
-                tmpResetVal = "1";
+        this_thread::sleep_for(chrono::milliseconds(5));
+        string tmpResetVal = "";
+        while (1) {
+            this_thread::sleep_for(chrono::milliseconds(10));
+            if (!redisMap.empty()) {
+
+                if (redisMap.count("resetKey")&&(readAddrKeyVal(jAddrVal,"resetKey") == "1")) {
+                    tmpResetVal = "1";
+                    break;
+                }
             }
+        }
+
+        while (1) {
+            this_thread::sleep_for(chrono::milliseconds(10));
             if ((tmpResetVal != "")&&(tmpResetVal == "1")) {
                 if (readAddrKeyVal(jAddrVal,"resetKey") == "0") {
                     tmpResetVal = "0";
@@ -923,11 +1004,32 @@ void resetValProcess() {
                     tmpObj[addrMap["alarm"]] = "0";
                     writeArray.append(tmpObj);
                     tmpAlarmRoot["writeValue"] = writeArray;
+                    cout<<"************local resetkey msg:"<<tmpAlarmRoot.toStyledString()<<endl;
                     vcSendLocalMsgs.push_back(tmpAlarmRoot.toStyledString());
+                    break;
                 }
             }
         }
     }
+
+}
+
+void alarmToMachine() {
+    Json::Value alarmRoot;
+    Json::Value writeValRoot;
+
+    alarmRoot["type"] = -99;
+    alarmRoot["order"] = 2;
+
+    map<string,string>::iterator iterator1;
+    for (iterator1=addrMap.begin();iterator1!=addrMap.end();iterator1++) {
+        Json::Value arrayObj;
+        arrayObj[iterator1->second] = "1";
+        writeValRoot.append(arrayObj);
+    }
+    alarmRoot["writeValue"] = writeValRoot;
+    cout<<"*****set alarmkey msg:"<<alarmRoot.toStyledString()<<endl;
+    vcSendLocalMsgs.push_back(alarmRoot.toStyledString());
 }
 
 int main(int argc,char *argv[]) {
@@ -1040,6 +1142,9 @@ int main(int argc,char *argv[]) {
        cout<<"subscr topic toolLife ok!"<<endl;
        client.subscribe(PUBTOPIC,0)->wait();
        cout<<"subscr topic "<<PUBTOPIC<<" ok!"<<endl;
+       string tmpLocalTopic = localTopic + machineId;
+//       client.subscribe(tmpLocalTopic,0)->wait();
+//       cout<<"subscr topic "<<tmpLocalTopic<<" ok!"<<endl;
        cout << "  ...OK" << endl;
        cout<<"callback member conn status:"<<cb.bConnStatus<<endl;
 
@@ -1057,6 +1162,8 @@ int main(int argc,char *argv[]) {
            return 1;
        }
    }
+
+//   alarmToMachine();
 
 //启动redis数据采集线程
     std::thread thCollectData(collectDataProcess);
@@ -1103,8 +1210,9 @@ int main(int argc,char *argv[]) {
                vector<string>::iterator it = vcSendLocalMsgs.begin();
                string tmpSendMsg = (*it);
                vcSendLocalMsgs.erase(it);
-               localTopic = localTopic + machineId;
-               mqtt::message_ptr msg = mqtt::make_message(localTopic,tmpSendMsg);
+               string tmpLocalTopic = localTopic + machineId;
+               cout<<"local topic:"<<tmpLocalTopic<<endl;
+               mqtt::message_ptr msg = mqtt::make_message(tmpLocalTopic,tmpSendMsg);
                msg->set_qos(0);
                client.publish(msg)->wait_for(2);
                cout<<"pub local msg ok"<<endl;
