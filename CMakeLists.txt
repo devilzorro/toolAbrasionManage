@@ -5,6 +5,8 @@ ADD_DEFINITIONS(-DJSON_IS_AMALGAMATION)
 
 set(CMAKE_CXX_STANDARD 11)
 
+set(CMAKE_BUILD_TYPE "release")
+
 if (UNIX)
 unset(source_files)
 
@@ -16,6 +18,7 @@ set(srcdirs
         src/redisClient/
         src/config/
         src/Log4C/
+        src/fileCtl/
         .)
 
 include_directories(
@@ -33,13 +36,26 @@ endforeach()
 #        libs/tooldll/
 #        .
 #)
+    find_library(
+            libs/hiredis/
+            libs/log4c/
+            libs/mqtt/
+            libs/miniz/
+    )
+
     link_directories(
-            /home/i5/bin/toolLife/
+            #/home/i5/bin/toolLife/
+            ${CMAKE_SOURCE_DIR}/libs/hiredis/
+            ${CMAKE_SOURCE_DIR}/libs/log4c/
+            ${CMAKE_SOURCE_DIR}/libs/mqtt/
+            ${CMAKE_SOURCE_DIR}/libs/miniz/
     )
 
 message("on unix platfrom")
 add_executable(toolLife ${source_files})
-target_link_libraries(toolLife libhiredis.a libpaho-mqttpp3.so log4cplus pthread dl uuid)
+target_link_libraries(toolLife libhiredis.a libpaho-mqttpp3.so libminiz.a log4cplus pthread dl uuid)
+set_target_properties(toolLife PROPERTIES INSTALL_RPATH "./")
+install(TARGETS toolLife DESTINATION ${CMAKE_SOURCE_DIR}/target)
 
 elseif(WIN32)
     message("on windows platfrom")
@@ -72,7 +88,7 @@ elseif(WIN32)
             libs/log4c-win/
             .
     )
-    add_executable(toolLife ${source_files})
+    add_executable(toolLife ${source_files} src/fileCtl/FileCtl.cpp src/fileCtl/FileCtl.h)
     target_link_libraries(toolLife hiredis paho-mqtt3a paho-mqttpp3 log4cplus)
 
 else()

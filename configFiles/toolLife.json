@@ -1,0 +1,34 @@
+{
+    "hhkey": "2030",
+    "hlkey": "2031",
+    "dllPath": "./libtool.so",
+    "hhkeyRedis": {
+        "load": "cnc_rdspmeter[0]",
+	"rpmKey":"cnc_acts",
+	"timeStamp":"isesol_timeStamp"
+    },
+    "hlkeyRedis": {
+	"toolNo": "ext_toolno",
+        "programName": "cnc_rdprgnum[1]",
+        "countStatus": "jobCounteByStatus",
+        "mahineStatusKey": "cnc_statinfo[3]",
+	"programEndTime": "programEndTime",
+        "programStartTime": "programStartTime",
+        "resetKey": "pmc_rdpmcrng[1,1,1,1]"
+    },
+    "machineStatus": {
+        "work": "3",
+        "free": "0",
+        "hold": "2"
+    },
+    "addr": {
+        "alarm": "cnc_wrmacro[610]"
+    },
+    "readAddr": [
+        {
+            "bit": "0",
+            "resetKey": "pmc_rdpmcrng[1,1,1,1]",
+            "bt": "true"
+        }
+    ]
+}

@@ -9,6 +9,7 @@
 #include <fstream>
 #include <sstream>
 
+using namespace std;
 
 /*
 * \brief Generic configuration Class

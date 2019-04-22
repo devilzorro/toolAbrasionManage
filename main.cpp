@@ -15,6 +15,7 @@
 #include <vector>
 #include <time.h>
 #include <map>
+#include "fileCtl/FileCtl.h"
 
 #ifdef WIN32
 #include "mqtt-win/async_client.h"
@@ -57,10 +58,22 @@ string configMachineNo = "";
 
 string localTopic  = "Command/x/";
 
+string strUploadUrl = "";
+string strUploadToken = "";
+string strBizId = "";
+FileCtl fileCtl;
+string resultToolVal = "";
+
+long maxSize = 5*1024*1024;
+
 //string programStartPoint = "";
 //string programEndPoint = "";
 
+#ifdef WIN32
 string dllPath = "tooldll.dll";
+#else
+string dllPath = "./libtool.so";
+#endif
 string redisAddr = "127.0.0.1";
 int redisPort = 6379;
 string mqttAddr = "127.0.0.1";
@@ -69,6 +82,7 @@ string strMqttPort = "1883";
 vector<string> vcRecvMsgs;
 vector<string> vcSendMsgs;
 vector<string> vcSendLocalMsgs;
+vector<string> vcSendLocalUploadMsgs;
 
 string strHhKeyVal = "2010";
 string strHlKeyVal = "2011";
@@ -80,6 +94,7 @@ map<string,string> HlKeysMap;
 map<string,string> machineStatusMap;
 map<string,string> addrMap;
 map<string,string> readAddrMap;
+map<string,string> recvUploadTokenMsgMap;
 
 map<int,double> sumMap;
 map<int,long> countMap;
@@ -97,10 +112,11 @@ vector<int> vcNoAlarmTool;
 Json::Value jAddrVal;
 
 CRedisClient redisClient;
+CRedisClient redisWriteClient;
 
-typedef double *(*pInitFun)();
-typedef int (*pFeedFun)(int toolNum, double load,double *p);
-typedef char* (*pResultFun)(double *p);
+typedef int (*pInitFun)();
+typedef int (*pFeedFun)(char *jsonData);
+typedef char* (*pResultFun)();
 
 pInitFun initFun;
 pFeedFun feedFun;
@@ -161,6 +177,35 @@ string getCurrentTime() {
 
 }
 
+string getSysTime(){ //13位秒级系统时间
+    //format: [s : ms]
+    struct timeval tv;
+    gettimeofday(&tv,NULL);
+    char s[128] = "";
+    sprintf(s,"%ld%ld",tv.tv_sec,(tv.tv_usec/1000));
+    string str = s;
+    cout<<str.length()<<endl;
+    return str;
+}
+
+vector<string> split(string strContent,string mark) {
+    string::size_type pos;
+    vector<string> result;
+    strContent += mark;
+    int size = strContent.size();
+    for(int i=0; i<size; i++)
+    {
+        pos = strContent.find(mark,i);
+        if(pos<size)
+        {
+            string s = strContent.substr(i,pos-i);
+            result.push_back(s);
+            i = pos+mark.size()-1;
+        }
+    }
+    return result;
+}
+
 
 string GetGuid()
 {
@@ -194,6 +239,47 @@ void collectRateProcess() {
     }
 }
 
+string generMsg228(string uploadFileName) {
+    Json::Value root;
+    Json::Value contentRoot;
+    Json::Value dataRoot;
+
+    dataRoot["time"] = getCurrentTime();
+    dataRoot["fileName"] = uploadFileName;
+
+    contentRoot["data"] = dataRoot.toStyledString();
+    contentRoot["dest"] = "toolLife";
+    contentRoot["order"] = 228;
+    contentRoot["switchs"] = "on";
+    contentRoot["frequency"] = 1;
+    contentRoot["source"] = "";
+    contentRoot["cmdId"] = "";
+    contentRoot["level"] = 7;
+    contentRoot["concurrent"] = "true";
+
+    root["content"] = contentRoot.toStyledString();
+    root["encode"] = false;
+    root["id"] = "";
+    root["machineNo"] = machineId;
+    root["type"] = 20;
+    root["order"] = 228;
+    root["dest"] = "toolLife";
+
+    return root.toStyledString();
+}
+
+string generUploadLocalMsg(string fileName,string toolValRes) {
+    Json::Value root;
+
+    root["filePath"] = fileName;
+    root["uploadToken"] = strUploadToken;
+    root["uploadUrl"] = strUploadUrl;
+    root["bizId"] = strBizId;
+    root["bizData"] = toolValRes;
+
+    return root.toStyledString();
+}
+
 void collectDataProcess() {
     cout<<"collect data thread running"<<endl;
     DEBUGLOG("collect data thread running");
@@ -218,6 +304,7 @@ void collectDataProcess() {
                         map<string,string>::iterator it;
                         for (it=HhKeysMap.begin();it!=HhKeysMap.end();++it) {
                             redisMap[it->first] = rootVal[it->second].asString();
+//                            cout<<it->second<<" val "<<rootVal[it->second].asString()<<endl;
                         }
                     }
 
@@ -283,7 +370,7 @@ void programNameAlarm(string currentName) {
 }
 
 
-char* processToolVal(string flag) {
+string processToolVal(string flag) {
     if (flag == "study") {
         cout<<"start study val count process"<<endl;
     } else {
@@ -327,7 +414,7 @@ char* processToolVal(string flag) {
     double *tmpPointer = new double;
     double *tmpR;
     Results re;
-    tmpPointer = initFun();
+    if(initFun() == 0);
 
     long tmpCount = 0;
     double tmpSum = 0;
@@ -335,27 +422,45 @@ char* processToolVal(string flag) {
     string currentStartPoint = "";
     long tmpCountStart = 0;
 
-    string writeName = "./" + tmpStartPoint;
-    ofstream fWrite(writeName);
+    string uploadTime = getSysTime();
+    if (uploadTime.length() < 13) {
+        uploadTime = uploadTime + "0";
+    }
+    string msg228 = generMsg228(redisMap["programName"]);
+    vcSendMsgs.push_back(msg228);
 
-
+    fileCtl.createNewzipFolder(tmpStartPoint);
+    ofstream fWrite;
+    long fileLength = 0;
+    int fileSplite = 1;
+    string destZipName = "/tmp/toolLife/" + uploadTime + "_1.zip";
+    string uploadZipName;
+    string uploadEOFName;
+//    string uploadZipName = "/home/i5/data/file/" + tmpStartPoint + ".zip";
     while (1) {
         this_thread::sleep_for(chrono::milliseconds(10));
         if (!redisMap.empty()) {
             if (redisMap["countStatus"] == "false") {
 //                cout<<"redis jobCountByStatus:"<<redisMap["countStatus"]<<endl;
                 if (tmpStartPoint != "") {
+//                    cout<<"redisMap time:"<<redisMap["programStartTime"]<<endl;
                     if (redisMap["programStartTime"] != tmpStartPoint) {
 //                        cout<<"satrt counting.........."<<endl;
 
 
                         if (flag == "study") {
                             if (studyStatus == "abort") {
-                                fWrite.close();
+                                fileCtl.deleteFile(destZipName);
+                                string strSplit;
+                                stringstream ssSplit;
+                                ssSplit<<fileSplite;
+                                ssSplit>>strSplit;
+                                string tmpFileName = "/tmp/toolLife/" + tmpStartPoint + "_" + strSplit;
+                                fileCtl.deleteFile(tmpFileName);
+//                                fWrite.close();
                                 break;
                             }
                         }
-
 
                         //获取redis中存储的数据
 //                        cout<<"redis toolNo:"<<redisMap["toolNo"]<<endl;
@@ -364,21 +469,78 @@ char* processToolVal(string flag) {
                             tmpCount++;
                             stringstream ssToolNo;
                             stringstream ssLoad;
+                            stringstream ssRpm;
                             int toolNo;
+                            int iRpm;
                             double tmpload;
+                            double load;
+                            double dbTime;
                             ssToolNo<<redisMap["toolNo"];
                             ssToolNo>>toolNo;
                             ssLoad<<redisMap["load"];
                             ssLoad>>tmpload;
+                            ssRpm<<redisMap["rpmKey"];
+                            ssRpm>>iRpm;
+
+                            string strTime = "";
+                            if (redisMap["timeStamp"] != "") {
+                                vector<string> tmpVcSplite = split(redisMap["timeStamp"],":");
+                                strTime = tmpVcSplite[0] + "." + tmpVcSplite[1];
+                                stringstream ssTime;
+                                ssTime<<strTime;
+                                ssTime>>dbTime;
+                            }
 //                            cout<<"toolNo"<<toolNo<<endl;
 //                            cout<<"load:"<<tmpload<<endl;
-                            feedFun(toolNo,tmpload,tmpPointer);
-                            tmpSum = tmpSum + tmpload;
-                            if (fWrite.is_open()) {
-                                string tmpWriteData = redisMap["toolNo"] + " : " + redisMap["load"] + "\n";
-                                fWrite<<tmpWriteData;
 
+                            Json::Value feedRoot;
+                            Json::Value feedArrayRoot;
+                            Json::Value arrayObj;
+                            arrayObj["toolnum"] = toolNo;
+                            arrayObj["load"] = tmpload;
+                            arrayObj["time"] = dbTime;
+                            arrayObj["rpm"] = iRpm;
+                            feedArrayRoot.append(arrayObj);
+                            feedRoot["feeddata"] = feedArrayRoot;
+                            string strFeedData = feedRoot.toStyledString();
+//                            cout<<"input feed data:"<<strFeedData<<endl;
+                            feedFun(strFeedData.c_str());
+                            tmpSum = tmpSum + tmpload;
+//                            if (fWrite.is_open()) {
+//                                string tmpWriteData = redisMap["toolNo"] + ":" + redisMap["load"] + ":"  + redisMap["rpmKey"] + ":" + strTime + "\n";
+//                                fWrite<<tmpWriteData;
+//                            }
+                            if (fileLength <= maxSize) {
+                                stringstream ssFileSplit;
+                                string strSplit;
+                                ssFileSplit<<fileSplite;
+                                ssFileSplit>>strSplit;
+                                string tmpFileName = "/tmp/toolLife/" + uploadTime + "_" + strSplit + ".txt";
+                                fWrite.open(tmpFileName,ios::app);
+                                string tmpWriteData = redisMap["toolNo"] + ":" + redisMap["load"] + ":"  + redisMap["rpmKey"] + ":" + strTime + "\n";
+                                if (fWrite.is_open()) {
+                                    fWrite<<tmpWriteData;
+                                }
+                                fWrite.close();
+                                FILE *checkSize = fopen(tmpFileName.c_str(),"rb");
+                                if (checkSize != NULL) {
+                                    fseek(checkSize, 0, SEEK_END);
+                                    fileLength = ftell(checkSize);
+                                    rewind(checkSize);
+                                }
+                                fclose(checkSize);
+                            } else {
+                                string strSplit;
+                                stringstream ssSplite;
+                                ssSplite<<fileSplite;
+                                ssSplite>>strSplit;
+                                string zipSrcName = "/tmp/toolLife/" + uploadTime + "_" + strSplit + ".txt";
+                                fileCtl.zipFile(zipSrcName,destZipName);
+                                fileCtl.deleteFile(zipSrcName);
+                                fileSplite++;
+                                fileLength = 0;
                             }
+
                         }
 
                         if (tmpCountStart == 0) {
@@ -391,7 +553,14 @@ char* processToolVal(string flag) {
                             cout<<"error start count end"<<endl;
 //                            DEBUGLOG("error start count end");
                             strprocessStatus = "error end";
-                            fWrite.close();
+                            fileCtl.deleteFile(destZipName);
+                            string strSplit;
+                            stringstream ssSplit;
+                            ssSplit<<fileSplite;
+                            ssSplit>>strSplit;
+                            string tmpFileName = "/tmp/toolLife/" + uploadTime + "_" + strSplit + ".txt";
+                            fileCtl.deleteFile(tmpFileName);
+//                            fWrite.close();
                             break;
                         }
 
@@ -403,7 +572,22 @@ char* processToolVal(string flag) {
                             cout<<"END***endPointVal:"<<redisMap["programEndTime"]<<endl;
 //                            DEBUGLOG("startPointVal:"<<redisMap["programStartTime"]);
 //                            DEBUGLOG("endPointVa:"<<redisMap["programEndTime"]);
-                            fWrite.close();
+//                            fWrite.close();
+                            stringstream ssSplit;
+                            string strSplit;
+                            ssSplit<<fileSplite;
+                            ssSplit>>strSplit;
+                            string tmpOriginName = "/tmp/toolLife/" + uploadTime + "_" + strSplit +".txt";
+                            fileCtl.zipFile(tmpOriginName,destZipName);
+                            fileCtl.deleteFile(tmpOriginName);
+                            uploadZipName = "/home/i5/data/file/" + strBizId + "_" + uploadTime + "_1.zip";
+                            fileCtl.mvFile(destZipName,uploadZipName);
+                            fileCtl.deleteFile(destZipName);
+                            uploadEOFName = "/home/i5/data/file/" + strBizId + "_" + uploadTime +"_2_eof.txt";
+                            ofstream eofWrite;
+                            eofWrite.open(uploadEOFName,ios::app);
+                            eofWrite.close();
+                            //pub local mqtt uploadMsg
                             break;
                         }
                     }
@@ -420,7 +604,8 @@ char* processToolVal(string flag) {
                                 ss>>toolNo;
                                 ss<<redisMap["load"];
                                 ss>>tmpload;
-                                feedFun(toolNo,tmpload,tmpPointer);
+                                char *tmpData = "";
+                                feedFun(tmpData);
                             }
                         } else if (redisMap["mahineStatusKey"] == machineStatusMap["free"]) {
                             break;
@@ -439,13 +624,32 @@ char* processToolVal(string flag) {
 
     cout<<"count val process end"<<endl;
     DEBUGLOG("count val process end");
-    double tmpDresult = tmpSum/tmpCount;
-    cout<<"********test result:"<<tmpDresult<<endl;
-    char* chret = resultFun(tmpPointer);
-    DEBUGLOG("count process result:"<<chret);
+//    double tmpDresult = tmpSum/tmpCount;
+//    cout<<"********test result:"<<tmpDresult<<endl;
+
+//    char chData[5000];
+//    memset(chData,'\0',5000);
+    char *chData = resultFun();
+
+    string strRet = chData;
+    Json::Value retRoot;
+    retRoot["toolVal"] = strRet;
+    retRoot["exeName"] = redisMap["programName"];
+    string strJsonRet = retRoot.toStyledString();
+    string uploadZipMsg = generUploadLocalMsg(uploadZipName,strJsonRet);
+    vcSendLocalUploadMsgs.push_back(uploadZipMsg);
+
+    string uploadEofMsg = generUploadLocalMsg(uploadEOFName,strJsonRet);
+    vcSendLocalUploadMsgs.push_back(uploadEofMsg);
+//    DEBUGLOG("count process result:"<<chData);
     delete tmpPointer;
 //    tmpPointer = NULL;
-    return chret;
+    char chCopy[5000];
+    memset(chCopy,'\0',5000);
+    strcpy(chCopy,chData);
+    resultToolVal = chCopy;
+    cout<<"resultToolVal:"<<chData<<endl;
+    return chData;
 }
 
 void studyProcess(string content,string studyId) {
@@ -523,8 +727,13 @@ void studyProcess(string content,string studyId) {
 
 void alertToolProcess(string mode) {
     while (1) {
+//        vcSendMsgs.push_back(gener)
         string recordVal = processToolVal(mode);
-
+        recordVal = resultToolVal;
+//        string recordVal = chRecordVal;
+//        while (recordVal.substr(recordVal.length()-1,1) != "}") {
+//            recordVal.pop_back();
+//        }
         if (strprocessStatus == "error end") {
             recordVal = "";
             strprocessStatus = "";
@@ -544,39 +753,45 @@ void alertToolProcess(string mode) {
         Json::Value tmpRoot;
         Json::Value tmpArray;
         if (recordVal != "") {
-            if (tmpReader.parse(recordVal,tmpRoot)) {
+            if (tmpReader.parse(resultToolVal,tmpRoot)) {
                 tmpArray = tmpRoot["result"];
             }
-            cout<<"    特征值："<<recordVal<<endl;
+            cout<<"******************toolval："<<resultToolVal<<endl;
             cout<<"result array size:"<<tmpArray.size()<<endl;
             for (int i = 0; i < tmpArray.size(); ++i) {
                 int toolNo = tmpArray[i]["toolnum"].asInt();
                 double val = tmpArray[i]["load"].asDouble();
+                if (val <  0) {
+                    ERRORLOG(recordVal.c_str());
+                    val = 0;
+                }
                 Json::Value valContent;
                 valContent["toolNo"] = tmpArray[i]["toolnum"].asInt();
-                valContent["value"] = tmpArray[i]["load"].asDouble();
+                valContent["value"] = val;
                 characteristicValueRoot.append(valContent);
 
                 if (programName != redisMap["programName"]) {
 
                 } else {
-                    if ((!maxLimMap.empty())&&(maxLimMap.count(toolNo))) {
-                        if (val > (maxLimMap[toolNo]*maxSensMap[toolNo])) {
-                            bAlarm = true;
-                            Json::Value alarmContent;
-                            alarmContent["toolNo"] = toolNo;
-                            alarmContent["detail"] = "超过预警上限！";
-                            alarmDetailRoot.append(alarmContent);
+                    if (val != 0) {
+                        if ((!maxLimMap.empty())&&(maxLimMap.count(toolNo))) {
+                            if (val > (maxLimMap[toolNo]*maxSensMap[toolNo])) {
+                                bAlarm = true;
+                                Json::Value alarmContent;
+                                alarmContent["toolNo"] = toolNo;
+                                alarmContent["detail"] = "超过预警上限！";
+                                alarmDetailRoot.append(alarmContent);
+                            }
                         }
-                    }
 
-                    if ((!minLimMap.empty())&&(minLimMap.count(toolNo))) {
-                        if (val < (minLimMap[toolNo]*minSensMap[toolNo])) {
-                            bAlarm = true;
-                            Json::Value alarmContent;
-                            alarmContent["toolNo"] = toolNo;
-                            alarmContent["detail"] = "低于预警下限！";
-                            alarmDetailRoot.append(alarmContent);
+                        if ((!minLimMap.empty())&&(minLimMap.count(toolNo))) {
+                            if (val < (minLimMap[toolNo]*minSensMap[toolNo])) {
+                                bAlarm = true;
+                                Json::Value alarmContent;
+                                alarmContent["toolNo"] = toolNo;
+                                alarmContent["detail"] = "低于预警下限！";
+                                alarmDetailRoot.append(alarmContent);
+                            }
                         }
                     }
                 }
@@ -674,28 +889,36 @@ void initLocalConfig(string content) {
             Json::Value characteristicMin = dataRoot["characteristicMin"];
             if (characteristicMax != NULL) {
                 for (int i = 0; i < characteristicMax.size(); ++i) {
-                    maxLimMap[characteristicMax[i]["toolNo"].asInt()] = characteristicMax[i]["value"].asDouble();
-                    maxSensMap[characteristicMax[i]["toolNo"].asInt()] = characteristicMax[i]["sens_ty"].asDouble();
+                    if (characteristicMax[i]["value"].asDouble() >= 0) {
+                        maxLimMap[characteristicMax[i]["toolNo"].asInt()] = characteristicMax[i]["value"].asDouble();
+                        maxSensMap[characteristicMax[i]["toolNo"].asInt()] = characteristicMax[i]["sens_ty"].asDouble();
+                    }
+
                 }
             }
 
             if (characteristicMin != NULL) {
                 for (int i = 0; i < characteristicMin.size(); ++i) {
-                    minLimMap[characteristicMin[i]["toolNo"].asInt()] = characteristicMin[i]["value"].asDouble();
-                    minSensMap[characteristicMin[i]["toolNo"].asInt()] = characteristicMin[i]["sens_ty"].asDouble();
+                    if (characteristicMin[i]["value"].asDouble() >= 0) {
+                        minLimMap[characteristicMin[i]["toolNo"].asInt()] = characteristicMin[i]["value"].asDouble();
+                        minSensMap[characteristicMin[i]["toolNo"].asInt()] = characteristicMin[i]["sens_ty"].asDouble();
+                    }
+
                 }
             }
 
             Json::Value groupedTool = dataRoot["groupedTool"];
             if (groupedTool != NULL) {
+                cout<<"grouped tool size:"<<groupedTool.size()<<endl;
                 for (int i = 0; i < groupedTool.size(); ++i) {
                     Json::Value toolArray = groupedTool[i];
                     double sameMaxVal;
                     double sameMinVal;
                     double sameMaxSensVal;
                     double sameMinSensVal;
+                    cout<<"tool Array size:"<<toolArray.size()<<endl;
                     for (int j = 0; j < toolArray.size(); ++j) {
-                        int iToolNo = toolArray[i].asInt();
+                        int iToolNo = toolArray[j].asInt();
                         //刀组阈值上限设置
                         if (maxLimMap.count(iToolNo)) {
                             sameMaxVal = maxLimMap[iToolNo];
@@ -728,6 +951,13 @@ void initLocalConfig(string content) {
                             }
                         }
                     }
+                }
+                map<int,double>::iterator itmaxLim;
+                for (itmaxLim = maxLimMap.begin(); itmaxLim != maxLimMap.end(); ++itmaxLim) {
+                    cout<<"lim toolNo:"<<itmaxLim->first<<endl;
+                    cout<<"max lim data:"<<maxLimMap[itmaxLim->first]*maxSensMap[itmaxLim->first]<<endl;
+                    cout<<"min lim data:"<<minLimMap[itmaxLim->first]*minSensMap[itmaxLim->first]<<endl;
+                    cout<<"************"<<endl;
                 }
             }
             //忽略预警刀号设置
@@ -770,15 +1000,29 @@ void initToolConfig(string content) {
             machineStatusRoot = root["machineStatus"];
             addrRoot = root["addr"];
 
-            HlKeysMap["toolNo"] = hlKeys["toolNo"].asString();
-            HlKeysMap["programName"] = hlKeys["programName"].asString();
-            HlKeysMap["programStartTime"] = hlKeys["programStartTime"].asString();
-            HlKeysMap["programEndTime"] = hlKeys["programEndTime"].asString();
-            HlKeysMap["countStatus"] = hlKeys["countStatus"].asString();
-            HlKeysMap["mahineStatusKey"] = hlKeys["mahineStatusKey"].asString();
-            HlKeysMap["resetKey"] = hlKeys["resetKey"].asString();
+//            HlKeysMap["programName"] = hlKeys["programName"].asString();
+//            HlKeysMap["countStatus"] = hlKeys["countStatus"].asString();
+//            HlKeysMap["mahineStatusKey"] = hlKeys["mahineStatusKey"].asString();
+//            HlKeysMap["resetKey"] = hlKeys["resetKey"].asString();
+//
+//            HhKeysMap["load"] = hhKeys["load"].asString();
+////            HhKeysMap["rpmKey"] = hhKeys["rpmKey"].asString();
+//            HhKeysMap["timeStamp"] = hhKeys["timeStamp"].asString();
+//            HhKeysMap["programStartTime"] = hhKeys["programStartTime"].asString();
+//            HhKeysMap["programEndTime"] = hhKeys["programEndTime"].asString();
+//            HhKeysMap["toolNo"] = hhKeys["toolNo"].asString();
 
-            HhKeysMap["load"] = hhKeys["load"].asString();
+            Json::Value::Members HlMems = hlKeys.getMemberNames();
+            Json::Value::Members::iterator HlIt;
+            for (HlIt = HlMems.begin();HlIt != HlMems.end();++HlIt) {
+                HlKeysMap[*HlIt] = hlKeys[*HlIt].asString();
+            }
+
+            Json::Value::Members HhMems = hhKeys.getMemberNames();
+            Json::Value::Members::iterator HhIt;
+            for (HhIt = HhMems.begin();HhIt != HhMems.end();++HhIt) {
+                HhKeysMap[*HhIt] = hhKeys[*HhIt].asString();
+            }
 
             machineStatusMap["work"] = machineStatusRoot["work"].asString();
             machineStatusMap["free"] = machineStatusRoot["free"].asString();
@@ -807,24 +1051,26 @@ void initToolConfig(string content) {
 }
 
 //盒子公共配置，获取盒子machineId
-void initCommConfig(string path) {
+int initCommConfig(string path) {
     Config config;
     if (config.FileExist(path)) {
         config.ReadFile(path);
         machineId = config.Read<string>("machineno","");
         cout<<"***********::"<<machineId<<endl;
         DEBUGLOG("***********::"<<machineId);
+        return 0;
     } else {
         cout<<"ini config file not exist!"<<endl;
         DEBUGLOG("ini config file not exist!");
+        return -1;
     }
 }
 
 
-void processMsg(string strContent) {
+void processMsg(string msgContent) {
     Json::Reader reader;
     Json::Value root;
-    if (reader.parse(strContent,root)) {
+    if (reader.parse(msgContent,root)) {
         int iOrder = root["order"].asInt();
         if ((iOrder == 222)||(iOrder == 223)) {
             Json::Reader contentReader;
@@ -893,6 +1139,23 @@ void processMsg(string strContent) {
                 }
             } else {
 
+            }
+        } else if (iOrder == 89) {
+            Json::Reader contentReader;
+            Json::Value contentRoot;
+            string strContent = root["content"].asString();
+            if (contentReader.parse(strContent,contentRoot)) {
+//                strUploadToken = contentRoot["uploadToken"].asString();
+//                strBizId = contentRoot["bizId"].asString();
+//                strUploadUrl = contentRoot["uploadUrl"].asString();
+                string strData = contentRoot["data"].asString();
+                Json::Reader dataReader;
+                Json::Value dataRoot;
+                if (dataReader.parse(strData,dataRoot)) {
+                    strUploadToken = dataRoot["uploadToken"].asString();
+                    strBizId = dataRoot["bizId"].asString();
+                    strUploadUrl = dataRoot["uploadUrl"].asString();
+                }
             }
         }
     } else {
@@ -1014,6 +1277,27 @@ void resetValProcess() {
 
 }
 
+void reset3000process() {
+    while (1) {
+        this_thread::sleep_for(chrono::milliseconds(5));
+        if (redisMap.count("resetKey")) {
+            if (redisMap["resetKey"] == "1") {
+                this_thread::sleep_for(chrono::milliseconds(1000));
+                Json::Value tmpAlarmRoot;
+                Json::Value writeArray;
+                tmpAlarmRoot["type"] = -99;
+                tmpAlarmRoot["order"] = 2;
+                Json::Value tmpObj;
+                tmpObj[addrMap["alarm"]] = "0";
+                writeArray.append(tmpObj);
+                tmpAlarmRoot["writeValue"] = writeArray;
+                cout<<"************local 3000 resetkey msg:"<<tmpAlarmRoot.toStyledString()<<endl;
+                vcSendLocalMsgs.push_back(tmpAlarmRoot.toStyledString());
+            }
+        }
+    }
+}
+
 void alarmToMachine() {
     Json::Value alarmRoot;
     Json::Value writeValRoot;
@@ -1032,7 +1316,112 @@ void alarmToMachine() {
     vcSendLocalMsgs.push_back(alarmRoot.toStyledString());
 }
 
+void rpmMonitorProcess() {
+    int formerRpm = 0;
+    int currentRpm = 0;
+    int countTimes = 0;
+    while (1) {
+        this_thread::sleep_for(chrono::milliseconds(30));
+        if (!redisMap.empty()) {
+            if (redisMap["rpmKey"] != "0") {
+                countTimes++;
+                stringstream ssRpm;
+                ssRpm<<redisMap["rpmKey"];
+                if (countTimes%2 == 1) {
+                    ssRpm>>formerRpm;
+                } else {
+                    ssRpm>>currentRpm;
+
+                    int rpmData = currentRpm - formerRpm;
+                    if (rpmData > 0) {
+
+                    } else if (rpmData < 0) {
+
+                    } else {
+
+                    }
+                }
+
+            }
+        }
+    }
+}
+
+void writeRedisBeat() {
+    while (1) {
+        this_thread::sleep_for(chrono::seconds(30));
+        cout<<"time:"<<getSysTime()<<endl;
+        redisWriteClient.Set("toolLife_connect",getSysTime());
+    }
+}
+
+void cleanFile() {
+    while (1) {
+        this_thread::sleep_for(chrono::seconds(1800));
+        vector<string> fileNames = fileCtl.readFileList("/tmp/toolLife/");
+        string currTime = getSysTime();
+        stringstream ssCTime;
+        long lTime;
+        ssCTime<<currTime;
+        ssCTime>>lTime;
+        //delete zip pack
+        for (int i = 0; i < fileNames.size(); ++i) {
+            vector<string> splitType = split(fileNames[i],".");
+            if (splitType[1] == "zip") {
+                vector<string> zipNames = split(splitType[0],"_");
+                string zipTime = zipNames[1];
+                stringstream ssZipTime;
+                long lZipTime;
+                ssZipTime<<zipTime;
+                ssZipTime>>lZipTime;
+
+                if ((lZipTime + 172800)<lTime) {
+                    fileCtl.deleteFile("/tmp/toolLife/" + fileNames[i]);
+                }
+            } else if (splitType[1] == "txt") {
+                vector<string> txtNames = split(splitType[0],"_");
+                string txtTime = txtNames[0];
+                long lTxtTime;
+                stringstream ssTxtTime;
+                ssTxtTime<<txtTime;
+                ssTxtTime>>lTxtTime;
+
+                if ((lTxtTime + 172800)<lTime) {
+                    fileCtl.deleteFile("/tmp/toolLife/" + fileNames[i]);
+                }
+            } else {
+
+            }
+        }
+        //delete origin files
+        fileNames.clear();
+    }
+}
+
+//void testTime() {
+//    while (1) {
+//        this_thread::sleep_for(chrono::seconds(1));
+//        string strTime = getSysTime();
+//        cout<<"time:"<<strTime<<"|"<<strTime.length()<<endl;
+//    }
+//
+//}
+
 int main(int argc,char *argv[]) {
+    if (argc > 1) {
+        if (strcmp(argv[1], "-v") == 0) {
+            cout<<"Version V0.1"<<endl;
+            return 0;
+        }
+    }
+
+#ifdef WIN32
+#else
+    fileCtl.createPath("/home/i5/data/file/");
+    fileCtl.createPath("/tmp/toolLife/");
+    fileCtl.createPath("/home/i5/data/logs/toolLife/");
+#endif
+
     //初始化配置文件
     //machineId配置
 //    programName = "test.iso";
@@ -1042,10 +1431,16 @@ int main(int argc,char *argv[]) {
     string tmpToolcontent = getConfigContent("toolVal.json");
     string tmpToolLifeContent = getConfigContent("toolLife.json");
 #else
-    initCommConfig("/home/i5/config/common/common.properties");
+    if (initCommConfig("/home/i5/config/common/common.properties") != 0) {
+        return -1;
+    }
 //    //获取阈值配置文件信息
     string tmpToolcontent = getConfigContent("/home/i5/config/toolLife/toolVal.json");
     string tmpToolLifeContent = getConfigContent("/home/i5/config/toolLife/toolLife.json");
+    if (tmpToolLifeContent == "") {
+        DEBUGLOG("toolLife.json file not exist!");
+        return -1;
+    }
 #endif
 
     if (!Log::instance().open_log())
@@ -1067,15 +1462,15 @@ int main(int argc,char *argv[]) {
     //初始化算法库
 #ifdef WIN32
     if (dllPath != "") {
-        HINSTANCE winDll = LoadLibrary(_T("tooldll.dll"));
+        HINSTANCE winDll = LoadLibrary(_T(dllPath));
         if (winDll != NULL) {
             initFun = (pInitFun)GetProcAddress(winDll,"initial");
             feedFun = (pFeedFun)GetProcAddress(winDll,"feed");
-            resultFun = (pResultFun)GetProcAddress(winDll,"result");
+            resultFun = (pResultFun)GetProcAddress(winDll,"loadresult");
         }
     }
 #else
-    void *plib = dlopen("./libtool.so",RTLD_NOW | RTLD_GLOBAL);
+    void *plib = dlopen(dllPath.c_str(),RTLD_NOW | RTLD_GLOBAL);
     if (!plib) {
         cout<<"error msg:"<<dlerror()<<endl;
         DEBUGLOG("error msg:"<<dlerror());
@@ -1090,7 +1485,7 @@ int main(int argc,char *argv[]) {
         if ((strError = dlerror()) != NULL) {
             cout<<"p to fun error:"<<strError<<endl;
         }
-        resultFun = (pResultFun)dlsym(plib,"result");
+        resultFun = (pResultFun)dlsym(plib,"loadresult");
         if ((strError = dlerror()) != NULL) {
             cout<<"p to fun error:"<<strError<<endl;
         }
@@ -1118,6 +1513,22 @@ int main(int argc,char *argv[]) {
             cout<<"toolLife local redis connect fail"<<endl;
             DEBUGLOG("toolLife local redis connect fail");
             redisStatus = true;
+            return -1;
+        }
+    }
+
+    bool redisWriteStatus = false;
+    int redisWriteCount = 0;
+    while (!redisWriteStatus) {
+        redisWriteStatus = redisWriteClient.Connect(redisAddr,redisPort);
+        cout<<"redis write connect status:"<<redisStatus<<endl;
+        DEBUGLOG("redis connect status:"<<redisStatus);
+        redisWriteCount++;
+        this_thread::sleep_for(chrono::seconds(1));
+        if (redisWriteCount == 10) {
+            cout<<"toolLife local redis connect fail"<<endl;
+            DEBUGLOG("toolLife local redis connect fail");
+            redisWriteStatus = true;
             return -1;
         }
     }
@@ -1180,8 +1591,19 @@ int main(int argc,char *argv[]) {
     std::thread thResetAlarm(resetValProcess);
     thResetAlarm.detach();
 
+    //写入redis心跳
+    std::thread thWriteRedisBeat(writeRedisBeat);
+    thWriteRedisBeat.detach();
+
+    //定时清理文件
+    std::thread thCleanFile(cleanFile);
+    thCleanFile.detach();
+
+//    std::thread thTimeTest(testTime);
+//    thTimeTest.detach();
+
    //处理消息 发送消息
-   while (1) {
+   while ((cb.bConnStatus)) {
        this_thread::sleep_for(chrono::milliseconds(100));
        //处理消息
        if (!vcRecvMsgs.empty()) {
@@ -1217,32 +1639,47 @@ int main(int argc,char *argv[]) {
                client.publish(msg)->wait_for(2);
                cout<<"pub local msg ok"<<endl;
            }
+
+           //发送上传文件消息
+           if (!vcSendLocalUploadMsgs.empty()) {
+               vector<string>::iterator it = vcSendLocalUploadMsgs.begin();
+               string tmpSendMsg = (*it);
+               vcSendLocalUploadMsgs.erase(it);
+               string uploadTopic = "FileUpload";
+               cout<<"local topic:"<<uploadTopic<<endl;
+               cout<<"local uplaod msg:"<<tmpSendMsg<<endl;
+               mqtt::message_ptr msg = mqtt::make_message(uploadTopic,tmpSendMsg);
+               msg->set_qos(0);
+               client.publish(msg)->wait_for(2);
+               cout<<"pub local upload msg ok"<<endl;
+           }
        }
    }
 
 
 //
-    cout<<"input q to exit"<<endl;
-    while (std::tolower(std::cin.get()) != 'q') {
+//    cout<<"input q to exit"<<endl;
+//    while (std::tolower(std::cin.get()) != 'q') {
 //        bool redisStatus = redisClient.Connect("127.0.0.1",6379);
 //        cout<<"redisConn status:"<<redisStatus<<endl;
 //        cout<<"redis connetct status:"<<redisClient.CheckStatus()<<endl;
-    }
-
-//   try {
-//       client.unsubscribe("hello")->wait();
-//       client.stop_consuming();
-//       client.disconnect()->wait();
-//       cout<<"discontent ok"<<endl;
-//   } catch (mqtt::exception &exc) {
-//       cerr << exc.what() << endl;
-//       return 1;
-//   }
-//    try {
-//        redisClient.Disconnect();
-//    }catch (exception e) {
-//        cerr << e.what()<<endl;
 //    }
+
+   try {
+//       client.unsubscribe()->wait();
+       client.stop_consuming();
+       client.disconnect()->wait();
+       cout<<"discontent ok"<<endl;
+   } catch (mqtt::exception &exc) {
+       cerr << exc.what() << endl;
+       return 1;
+   }
+    try {
+        redisClient.Disconnect();
+        redisWriteClient.Disconnect();
+    }catch (exception e) {
+        cerr << e.what()<<endl;
+    }
 
     return 0;
 }
