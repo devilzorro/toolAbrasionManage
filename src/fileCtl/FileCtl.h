@@ -23,6 +23,7 @@ public:
     string folderName;
 
     int zipFile(string srcFileName,string destZipPack);
+    int unzipFile(string srcFileName,string destFileName);
     void createNewzipFolder(string folderName);
     int mvFile(string fileName,string destName);
     int deleteFile(string fileName);

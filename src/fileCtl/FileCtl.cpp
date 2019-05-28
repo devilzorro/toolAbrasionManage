@@ -4,6 +4,8 @@
 
 #include "FileCtl.h"
 #include "miniz/miniz_zip.h"
+//#include "unzip/inflate.h"
+#include "unzip/Unzip.h"
 #include <iostream>
 #include <unistd.h>
 
@@ -129,6 +131,11 @@ vector<string> FileCtl::readFileList(string dirName) {
         }
     }
     return retFileNames;
+}
+
+int FileCtl::unzipFile(string srcZipFileName, string destFolderName) {
+    Unzip unzipObj;
+    return unzipObj.unzipFunc(srcZipFileName,destFolderName);
 }
 
 

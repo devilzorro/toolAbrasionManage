@@ -19,6 +19,7 @@ set(srcdirs
         src/config/
         src/Log4C/
         src/fileCtl/
+        src/unzip/
         .)
 
 include_directories(

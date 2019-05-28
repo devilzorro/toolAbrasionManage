@@ -28,7 +28,7 @@ fi
 ps -ef | grep "toolLife$" | egrep -v "grep|$0" | awk '{print $2}' | xargs kill -9
 
 #copy file to target folder
-cp $DIR/* $TARGETPATH
+cp -rf $DIR/* $TARGETPATH
 
 #remove update.sh under /home/i5/bin/collector
 if [ -f $TARGETPATH/update.sh ]; then
