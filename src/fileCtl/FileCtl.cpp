@@ -4,17 +4,20 @@
 
 #include "FileCtl.h"
 #include "miniz/miniz_zip.h"
-//#include "unzip/inflate.h"
-#include "unzip/Unzip.h"
 #include <iostream>
-#include <unistd.h>
 
 #ifdef WIN32
-#include <windows>
+#include <windows.h>
+#include "unzip-win/unzip.h"
+#include <io.h>
+#include <direct.h>
+#include <tchar.h>
 #else
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <unistd.h>
+#include "unzip/Unzip.h"
 #endif
 
 FileCtl::FileCtl() {
@@ -96,11 +99,20 @@ int FileCtl::mvFile(string fileName, string destName) {
 }
 
 int FileCtl::deleteFile(string fileName) {
+#ifdef WIN32
+    return _unlink(fileName.c_str());
+#else
     int ret = unlink(fileName.c_str());
     return ret;
+#endif
 }
 
 int FileCtl::createPath(string pathName) {
+#ifdef WIN32
+//    int isExist = _access(pathName.c_str(),00);
+
+    return _mkdir(pathName.c_str());
+#else
     int isCreate = mkdir(pathName.c_str(),S_IRUSR | S_IWUSR | S_IXUSR | S_IRWXG | S_IRWXO);
     if (!isCreate) {
         cout<<"create path:"<<pathName<<endl;
@@ -108,11 +120,50 @@ int FileCtl::createPath(string pathName) {
         cout<<"create path error:"<<pathName<<"|error code:"<<isCreate<<endl;
     }
     return isCreate;
+#endif
 }
 
 vector<string> FileCtl::readFileList(string dirName) {
     vector<string> retFileNames;
     retFileNames.clear();
+#ifdef WIN32
+    struct _finddata_t file; //定义结构体变量
+    long handle;
+    int iRetVal = 0;
+    FILE *pf = NULL;
+    char cFileAddr[300];
+    strcpy(cFileAddr, dirName.c_str());
+    _chdir(dirName.c_str());
+    strcat(cFileAddr, "*.*");
+    handle = _findfirst(cFileAddr, &file);//查找所有文件
+
+
+    if (handle == -1)//如果handle为－1, 表示当前目录为空, 则结束查找而返回如果handle为－1, 表示当前目录为空, 则结束查找而返回
+    {
+
+    }
+    else
+    {
+        while (!(_findnext(handle, &file)))
+        {
+            if (file.attrib &_A_SUBDIR) //是目录
+            {
+                if (file.name[0] != '.') //文件名不是'.'或'..'时
+                {
+                    memset(cFileAddr, 0, sizeof(cFileAddr));
+                    _chdir(file.name); //进入该目录
+                    printf("%s\n",file.name);//               add---
+                    retFileNames.push_back(file.name);
+//                    fprintf(fp,"%s\n" ,file.name);
+
+                    _chdir("..");//查找完毕之后, 返回上一级目录找完毕之后, 返回　　　　　　　　　　　　　　　　　上一级目录
+
+                }
+            }
+        }
+        _findclose(handle);
+    }
+#else
     DIR *dir;
     struct dirent *dirPtr;
     if ((dir = opendir(dirName.c_str())) == NULL) {
@@ -130,12 +181,46 @@ vector<string> FileCtl::readFileList(string dirName) {
             retFileNames.push_back(dirPtr->d_name);
         }
     }
+#endif
     return retFileNames;
 }
 
 int FileCtl::unzipFile(string srcZipFileName, string destFolderName) {
+#ifdef WIN32
+//    TCHAR *tPath;
+//#ifdef UNICODE
+//    _stprintf_s(tPath, MAX_PATH, _T("%S"), srcZipFileName.c_str());//%S宽字符
+//#else
+//    _stprintf_s(tPath, MAX_PATH, _T("%s"), srcZipFileName.c_str());//%s单字符
+//#endif
+
+    HZIP hz = OpenZip(_T(srcZipFileName.c_str()),0);
+    ZIPENTRY ze; GetZipItem(hz,-1,&ze); int numitems=ze.index;
+// -1 gives overall information about the zipfile
+    for (int zi=0; zi<numitems; zi++)
+    { ZIPENTRY ze; GetZipItem(hz,zi,&ze); // fetch individual details
+        printf("unzip fileName:%s\n",ze.name);
+        UnzipItem(hz, zi, ze.name);         // e.g. the item's name.
+    }
+    CloseZip(hz);
+
+//    HZIP hz = OpenZip(srcZipFileName.c_str(),0);
+//    ZIPENTRY ze;
+//    GetZipItem(hz,-1,&ze);
+//    int numitems = ze.index;
+//    for (int zi = 0; zi < numitems; zi++)
+//    {
+//        ZIPENTRY ze;
+//        GetZipItem(hz, zi, &ze);
+//        printf("unzip fileName:%s\n",ze.name);
+//        UnzipItem(hz, zi, ze.name);
+//    }
+//    CloseZip(hz);
+    return 0;
+#else
     Unzip unzipObj;
     return unzipObj.unzipFunc(srcZipFileName,destFolderName);
+#endif
 }
 
 

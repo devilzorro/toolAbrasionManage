@@ -182,6 +182,9 @@ string getCurrentTime() {
 }
 
 string getSysTime(){ //13位秒级系统时间
+#ifdef WIN32
+    return "";
+#else
     //format: [s : ms]
     struct timeval tv;
     gettimeofday(&tv,NULL);
@@ -204,6 +207,7 @@ string getSysTime(){ //13位秒级系统时间
     string str = s + strMs;
     cout<<str.length()<<endl;
     return str;
+#endif
 }
 
 vector<string> split(string strContent,string mark) {
@@ -859,7 +863,7 @@ void alertToolMsg() {
                 if (tmpReader.parse(recordVal, tmpRoot)) {
                     tmpArray = tmpRoot["result"];
                 }
-                cout << "******************toolval：" << resultToolVal << endl;
+                cout << "******************toolval:" << resultToolVal << endl;
                 cout << "result array size:" << tmpArray.size() << endl;
                 for (int i = 0; i < tmpArray.size(); ++i) {
                     int toolNo = tmpArray[i]["toolnum"].asInt();
@@ -882,7 +886,7 @@ void alertToolMsg() {
                                     bAlarm = true;
                                     Json::Value alarmContent;
                                     alarmContent["toolNo"] = toolNo;
-                                    alarmContent["detail"] = "超过预警上限！";
+                                    alarmContent["detail"] = "超过预警上限!";
                                     alarmDetailRoot.append(alarmContent);
                                 }
                             }
@@ -892,7 +896,7 @@ void alertToolMsg() {
                                     bAlarm = true;
                                     Json::Value alarmContent;
                                     alarmContent["toolNo"] = toolNo;
-                                    alarmContent["detail"] = "低于预警下限！";
+                                    alarmContent["detail"] = "低于预警下限!";
                                     alarmDetailRoot.append(alarmContent);
                                 }
                             }
@@ -1593,7 +1597,7 @@ void feedDataProcess() {
                 JFeedInput["feeddata"] = JFeedArray;
                 string strInputFeed = JFeedInput.toStyledString();
 //                cout<<"feed data:"<<strInputFeed<<endl;
-                feedFun(strInputFeed.c_str());
+                feedFun((char *)strInputFeed.c_str());
             }
         } else {
             if (bEndFlag) {
@@ -1681,7 +1685,7 @@ int main(int argc,char *argv[]) {
     //初始化算法库
 #ifdef WIN32
     if (dllPath != "") {
-        HINSTANCE winDll = LoadLibrary(_T(dllPath));
+        HINSTANCE winDll = LoadLibrary(_T(dllPath.c_str()));
         if (winDll != NULL) {
             initFun = (pInitFun)GetProcAddress(winDll,"initial");
             feedFun = (pFeedFun)GetProcAddress(winDll,"feed");

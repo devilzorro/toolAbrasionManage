@@ -11,9 +11,17 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <fstream>
+#include <iostream>
+
+#ifdef WIN32
+
+#include <windows.h>
+#include <io.h>
+#else
 #include <unistd.h>
 #include <sys/mman.h>
-#include <fstream>
+#endif
 
 /*
 derived from gzip source code by Antoine Von Zorich
@@ -134,7 +142,11 @@ oversubscribed set of lengths), and three if not enough memory. */
     unsigned z;                   /* number of entries in current table */
 
     /* Generate counts for each bit length */
+#ifdef WIN32
+    memset(c,0, sizeof(c));
+#else
     bzero(c, sizeof(c));
+#endif
     p = b;  i = n;
     do {
         c[*p]++;                    /* assume all entries <= BMAX */
@@ -579,7 +591,11 @@ void Unzip::unzip(zip_t *pzip, char *path)
     int pathlen = path ? strlen(path) : 0;
     beg = pzip->inbuf;
     ptop = beg + siz;
-    while (NULL != (p = (uch *)memmem(beg, siz, zipsignature, 4))) {
+#ifdef WIN32
+#else
+    while (NULL != (p = (uch *)memmem(beg, siz, zipsignature, 4)))
+#endif
+    {
         int filenamlen;
         unsigned char *pos;
         pos = p + ZIP_FILENAME_LENGTH_OFFSET;
@@ -606,6 +622,52 @@ int Unzip::load_zip_file(char *path)
     int fd = -1;
     struct stat f_stat;
 
+#ifdef WIN32
+    HANDLE fileH = CreateFile(path,
+            GENERIC_READ|GENERIC_WRITE,
+            FILE_SHARE_READ,
+            NULL,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            NULL);
+    if(fileH == INVALID_HANDLE_VALUE)
+    {
+        cout<<"error in CreateFile"<<endl;
+        return -1;
+    }
+
+    HANDLE mapFileH = CreateFileMapping( fileH,
+            NULL,
+            PAGE_READWRITE,
+            0,
+            0,
+            "Resource " );
+    if(mapFileH == NULL)
+    {
+        cout<<"error in CreateFileMapping"<<endl;
+        return -1;
+    }
+
+    start = (unsigned char *)MapViewOfFile( mapFileH,
+            FILE_MAP_ALL_ACCESS,
+            0,
+            0,
+            0);
+
+    if(start == NULL)
+    {
+        cout<<"error in MapViewOfFile"<<endl;
+        return -1;
+    }
+    FILE *fileSize = fopen(path,"rb");
+    if (fileSize != NULL) {
+        fseek(fileSize, 0, SEEK_END);
+        zipfilelength = ftell(fileSize);
+        rewind(fileSize);
+    }
+    fclose(fileSize);
+
+#else
     if ((fd = open(path, O_RDONLY)) == -1)
         return -1;
     if (fstat(fd, &f_stat))
@@ -617,15 +679,20 @@ int Unzip::load_zip_file(char *path)
         return -1;
     close(fd);
     return 0;
+#endif
 }
 
 int Unzip::unzipFunc(string srcZipName, string destFolderName) {
     zip_t zip;
-    if(load_zip_file(srcZipName.c_str()) > 0) {
+    if(load_zip_file((char *)srcZipName.c_str()) > 0) {
         printf("load zip file %s failed!",srcZipName.c_str());
         return -1;
     }
+#ifdef WIN32
+    memset(&zip,0,sizeof(zip_t));
+#else
     bzero(&zip, sizeof(zip_t));
+#endif
     zip.inbuf = start;
     zip.inbufsiz = zipfilelength;
 

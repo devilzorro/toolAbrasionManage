@@ -68,6 +68,8 @@ elseif(WIN32)
             src/Win32_Interop/
             src/config/
             src/Log4C/
+            src/unzip-win/
+            src/fileCtl/
             #src/win_stdafx/
             .)
 
@@ -87,10 +89,11 @@ elseif(WIN32)
             libs/mqtt-win/
             libs/tooldll-win/
             libs/log4c-win/
+            libs/miniz-win/
             .
     )
-    add_executable(toolLife ${source_files} src/fileCtl/FileCtl.cpp src/fileCtl/FileCtl.h)
-    target_link_libraries(toolLife hiredis paho-mqtt3a paho-mqttpp3 log4cplus)
+    add_executable(toolLife ${source_files})
+    target_link_libraries(toolLife hiredis paho-mqtt3a paho-mqttpp3 log4cplus miniz)
 
 else()
     message("on a unsupport platfrom")
